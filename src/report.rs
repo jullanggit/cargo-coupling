@@ -1,0 +1,868 @@
+//! Report generation for coupling analysis
+//!
+//! Generates human-readable reports with actionable refactoring suggestions.
+
+use std::io::{self, Write};
+
+use crate::balance::{
+    BalanceScore, IssueThresholds, ProjectBalanceReport, Severity,
+    analyze_project_balance_with_thresholds,
+};
+use crate::connascence::ConnascenceType;
+use crate::metrics::{Distance, IntegrationStrength, ProjectMetrics};
+
+/// Generate a summary report to the given writer
+pub fn generate_summary<W: Write>(metrics: &ProjectMetrics, writer: &mut W) -> io::Result<()> {
+    generate_summary_with_thresholds(metrics, &IssueThresholds::default(), writer)
+}
+
+/// Generate a summary report with custom thresholds
+pub fn generate_summary_with_thresholds<W: Write>(
+    metrics: &ProjectMetrics,
+    thresholds: &IssueThresholds,
+    writer: &mut W,
+) -> io::Result<()> {
+    let report = analyze_project_balance_with_thresholds(metrics, thresholds);
+
+    writeln!(writer, "Coupling Analysis Summary:")?;
+    writeln!(writer, "  Health Grade: {}", report.health_grade)?;
+    writeln!(writer, "  Files: {}", metrics.total_files)?;
+    writeln!(writer, "  Modules: {}", metrics.module_count())?;
+    writeln!(writer, "  Couplings: {}", report.total_couplings)?;
+    writeln!(writer, "  Balance Score: {:.2}", report.average_score)?;
+
+    // Issue breakdown
+    let critical = *report
+        .issues_by_severity
+        .get(&Severity::Critical)
+        .unwrap_or(&0);
+    let high = *report.issues_by_severity.get(&Severity::High).unwrap_or(&0);
+    let medium = *report
+        .issues_by_severity
+        .get(&Severity::Medium)
+        .unwrap_or(&0);
+
+    if critical > 0 || high > 0 || medium > 0 {
+        writeln!(writer)?;
+        writeln!(writer, "  Issues:")?;
+        if critical > 0 {
+            writeln!(writer, "    Critical: {} (must fix)", critical)?;
+        }
+        if high > 0 {
+            writeln!(writer, "    High: {} (should fix)", high)?;
+        }
+        if medium > 0 {
+            writeln!(writer, "    Medium: {}", medium)?;
+        }
+    }
+
+    // Top priority if any
+    if !report.top_priorities.is_empty() {
+        writeln!(writer)?;
+        writeln!(writer, "  Top Priority:")?;
+        for issue in report.top_priorities.iter().take(3) {
+            writeln!(
+                writer,
+                "    - [{}] {} → {}",
+                issue.severity, issue.source, issue.target
+            )?;
+        }
+    }
+
+    // Coupling breakdown
+    if !metrics.couplings.is_empty() {
+        let internal = metrics
+            .couplings
+            .iter()
+            .filter(|c| c.distance != Distance::DifferentCrate)
+            .count();
+        let external = metrics.couplings.len() - internal;
+        writeln!(writer)?;
+        writeln!(writer, "  Breakdown:")?;
+        writeln!(writer, "    Internal: {}", internal)?;
+        writeln!(writer, "    External: {}", external)?;
+        writeln!(writer, "    Balanced: {}", report.balanced_count)?;
+        writeln!(writer, "    Needs Review: {}", report.needs_review)?;
+        writeln!(
+            writer,
+            "    Needs Refactoring: {}",
+            report.needs_refactoring
+        )?;
+    }
+
+    // Circular dependencies
+    let circular = metrics.circular_dependency_summary();
+    if circular.total_cycles > 0 {
+        writeln!(writer)?;
+        writeln!(
+            writer,
+            "  ⚠️ Circular Dependencies: {} cycles ({} modules)",
+            circular.total_cycles, circular.affected_modules
+        )?;
+    }
+
+    // Connascence summary
+    if metrics.connascence_stats.total > 0 {
+        writeln!(writer)?;
+        writeln!(writer, "  Connascence:")?;
+        writeln!(
+            writer,
+            "    Total: {} (avg strength: {:.2})",
+            metrics.connascence_stats.total,
+            metrics.connascence_stats.average_strength()
+        )?;
+        let position = metrics.connascence_stats.count(ConnascenceType::Position);
+        let algorithm = metrics.connascence_stats.count(ConnascenceType::Algorithm);
+        if position > 0 || algorithm > 0 {
+            writeln!(
+                writer,
+                "    High-strength: Position={}, Algorithm={}",
+                position, algorithm
+            )?;
+        }
+    }
+
+    Ok(())
+}
+
+/// Generate a full Markdown report with refactoring suggestions
+pub fn generate_report<W: Write>(metrics: &ProjectMetrics, writer: &mut W) -> io::Result<()> {
+    generate_report_with_thresholds(metrics, &IssueThresholds::default(), writer)
+}
+
+/// Generate a full Markdown report with custom thresholds
+pub fn generate_report_with_thresholds<W: Write>(
+    metrics: &ProjectMetrics,
+    thresholds: &IssueThresholds,
+    writer: &mut W,
+) -> io::Result<()> {
+    let report = analyze_project_balance_with_thresholds(metrics, thresholds);
+
+    writeln!(writer, "# Coupling Analysis Report\n")?;
+
+    // Executive Summary
+    write_executive_summary(metrics, &report, writer)?;
+
+    // Refactoring Priorities (if any issues)
+    if !report.issues.is_empty() {
+        write_refactoring_priorities(&report, writer)?;
+    }
+
+    // Detailed Issues by Type
+    write_issues_by_type(&report, writer)?;
+
+    // Coupling details
+    write_coupling_section(metrics, writer)?;
+
+    // Connascence analysis
+    write_connascence_section(metrics, writer)?;
+
+    // Module analysis
+    write_module_section(metrics, writer)?;
+
+    // Volatility section
+    write_volatility_section(metrics, writer)?;
+
+    // Circular dependency section
+    write_circular_dependencies_section(metrics, writer)?;
+
+    // Best practices
+    write_best_practices(writer)?;
+
+    Ok(())
+}
+
+fn write_executive_summary<W: Write>(
+    metrics: &ProjectMetrics,
+    report: &ProjectBalanceReport,
+    writer: &mut W,
+) -> io::Result<()> {
+    writeln!(writer, "## Executive Summary\n")?;
+
+    // Health Grade with emoji
+    let grade_emoji = match report.health_grade {
+        crate::balance::HealthGrade::A => "🟢",
+        crate::balance::HealthGrade::B => "🟢",
+        crate::balance::HealthGrade::C => "🟡",
+        crate::balance::HealthGrade::D => "🟠",
+        crate::balance::HealthGrade::F => "🔴",
+    };
+
+    writeln!(
+        writer,
+        "**Health Grade**: {} {}\n",
+        grade_emoji, report.health_grade
+    )?;
+
+    writeln!(writer, "| Metric | Value |")?;
+    writeln!(writer, "|--------|-------|")?;
+    writeln!(writer, "| Files Analyzed | {} |", metrics.total_files)?;
+    writeln!(writer, "| Total Modules | {} |", metrics.module_count())?;
+    writeln!(writer, "| Total Couplings | {} |", report.total_couplings)?;
+    writeln!(
+        writer,
+        "| Balance Score | {:.2}/1.00 |",
+        report.average_score
+    )?;
+    writeln!(
+        writer,
+        "| Balanced | {} ({:.0}%) |",
+        report.balanced_count,
+        if report.total_couplings > 0 {
+            (report.balanced_count as f64 / report.total_couplings as f64) * 100.0
+        } else {
+            100.0
+        }
+    )?;
+    writeln!(
+        writer,
+        "| Needs Refactoring | {} |",
+        report.needs_refactoring
+    )?;
+    writeln!(writer)?;
+
+    // Issue counts
+    let critical = *report
+        .issues_by_severity
+        .get(&Severity::Critical)
+        .unwrap_or(&0);
+    let high = *report.issues_by_severity.get(&Severity::High).unwrap_or(&0);
+    let medium = *report
+        .issues_by_severity
+        .get(&Severity::Medium)
+        .unwrap_or(&0);
+    let low = *report.issues_by_severity.get(&Severity::Low).unwrap_or(&0);
+
+    if critical > 0 || high > 0 {
+        writeln!(writer, "**⚠️ Action Required**\n")?;
+        if critical > 0 {
+            writeln!(
+                writer,
+                "- 🔴 **{} Critical** issues must be fixed immediately",
+                critical
+            )?;
+        }
+        if high > 0 {
+            writeln!(
+                writer,
+                "- 🟠 **{} High** priority issues should be addressed soon",
+                high
+            )?;
+        }
+        if medium > 0 {
+            writeln!(writer, "- 🟡 {} Medium priority issues to review", medium)?;
+        }
+        if low > 0 {
+            writeln!(writer, "- {} Low priority suggestions", low)?;
+        }
+        writeln!(writer)?;
+    } else if medium > 0 {
+        writeln!(
+            writer,
+            "**ℹ️ Review Suggested**: {} issues to consider.\n",
+            medium + low
+        )?;
+    } else {
+        writeln!(
+            writer,
+            "**✅ Good Health**: No significant coupling issues detected.\n"
+        )?;
+    }
+
+    Ok(())
+}
+
+fn write_refactoring_priorities<W: Write>(
+    report: &ProjectBalanceReport,
+    writer: &mut W,
+) -> io::Result<()> {
+    writeln!(writer, "## 🔧 Refactoring Priorities\n")?;
+
+    // Show top 5 priority issues with concrete actions
+    writeln!(writer, "### Immediate Actions\n")?;
+
+    let priority_issues: Vec<_> = report
+        .issues
+        .iter()
+        .filter(|i| i.severity >= Severity::Medium)
+        .take(5)
+        .collect();
+
+    if priority_issues.is_empty() {
+        writeln!(writer, "No immediate refactoring actions required.\n")?;
+        return Ok(());
+    }
+
+    for (i, issue) in priority_issues.iter().enumerate() {
+        let severity_icon = match issue.severity {
+            Severity::Critical => "🔴",
+            Severity::High => "🟠",
+            Severity::Medium => "🟡",
+            Severity::Low => "⚪",
+        };
+
+        writeln!(
+            writer,
+            "**{}. {} `{}` → `{}`**\n",
+            i + 1,
+            severity_icon,
+            issue.source,
+            issue.target
+        )?;
+
+        writeln!(
+            writer,
+            "- **Issue**: {} - {}",
+            issue.issue_type, issue.description
+        )?;
+        writeln!(writer, "- **Why**: {}", issue.issue_type.description())?;
+        writeln!(writer, "- **Action**: {}", issue.refactoring)?;
+        writeln!(writer, "- **Balance Score**: {:.2}\n", issue.balance_score)?;
+    }
+
+    Ok(())
+}
+
+fn write_issues_by_type<W: Write>(report: &ProjectBalanceReport, writer: &mut W) -> io::Result<()> {
+    if report.issues.is_empty() {
+        return Ok(());
+    }
+
+    writeln!(writer, "## Issues by Category\n")?;
+
+    let grouped = report.issues_grouped_by_type();
+
+    // Order by severity of issues in each group
+    let mut issue_types: Vec<_> = grouped.keys().collect();
+    issue_types.sort_by(|a, b| {
+        let a_max = grouped
+            .get(a)
+            .and_then(|v| v.iter().map(|i| i.severity).max());
+        let b_max = grouped
+            .get(b)
+            .and_then(|v| v.iter().map(|i| i.severity).max());
+        b_max.cmp(&a_max)
+    });
+
+    for issue_type in issue_types {
+        if let Some(issues) = grouped.get(issue_type) {
+            let count = issues.len();
+
+            writeln!(writer, "### {} ({} instances)\n", issue_type, count)?;
+            writeln!(writer, "> {}\n", issue_type.description())?;
+
+            // Show up to 5 examples
+            writeln!(writer, "| Severity | Source | Target | Action |")?;
+            writeln!(writer, "|----------|--------|--------|--------|")?;
+
+            for issue in issues.iter().take(5) {
+                let action_short = format!("{}", issue.refactoring);
+                let action_truncated = if action_short.len() > 40 {
+                    format!("{}...", &action_short[..40])
+                } else {
+                    action_short
+                };
+                writeln!(
+                    writer,
+                    "| {} | `{}` | `{}` | {} |",
+                    issue.severity,
+                    truncate_path(&issue.source, 25),
+                    truncate_path(&issue.target, 25),
+                    action_truncated
+                )?;
+            }
+
+            if count > 5 {
+                writeln!(writer, "\n*...and {} more instances*", count - 5)?;
+            }
+            writeln!(writer)?;
+        }
+    }
+
+    Ok(())
+}
+
+fn write_coupling_section<W: Write>(metrics: &ProjectMetrics, writer: &mut W) -> io::Result<()> {
+    if metrics.couplings.is_empty() {
+        return Ok(());
+    }
+
+    writeln!(writer, "## Coupling Distribution\n")?;
+
+    // Strength distribution
+    writeln!(writer, "### By Integration Strength\n")?;
+    writeln!(writer, "| Strength | Count | % | Description |")?;
+    writeln!(writer, "|----------|-------|---|-------------|")?;
+
+    let total = metrics.couplings.len() as f64;
+    for (strength, label, desc) in [
+        (
+            IntegrationStrength::Contract,
+            "Contract",
+            "Depends on traits/interfaces only",
+        ),
+        (
+            IntegrationStrength::Model,
+            "Model",
+            "Uses data types/structs",
+        ),
+        (
+            IntegrationStrength::Functional,
+            "Functional",
+            "Calls specific functions",
+        ),
+        (
+            IntegrationStrength::Intrusive,
+            "Intrusive",
+            "Accesses internal details",
+        ),
+    ] {
+        let count = metrics
+            .couplings
+            .iter()
+            .filter(|c| c.strength == strength)
+            .count();
+        let pct = (count as f64 / total) * 100.0;
+        writeln!(writer, "| {} | {} | {:.0}% | {} |", label, count, pct, desc)?;
+    }
+    writeln!(writer)?;
+
+    // Distance distribution
+    writeln!(writer, "### By Distance\n")?;
+    writeln!(writer, "| Distance | Count | % |")?;
+    writeln!(writer, "|----------|-------|---|")?;
+
+    for (distance, label) in [
+        (Distance::SameModule, "Same Module (close)"),
+        (Distance::DifferentModule, "Different Module"),
+        (Distance::DifferentCrate, "External Crate (far)"),
+    ] {
+        let count = metrics
+            .couplings
+            .iter()
+            .filter(|c| c.distance == distance)
+            .count();
+        let pct = (count as f64 / total) * 100.0;
+        writeln!(writer, "| {} | {} | {:.0}% |", label, count, pct)?;
+    }
+    writeln!(writer)?;
+
+    // Worst balanced couplings
+    writeln!(writer, "### Worst Balanced Couplings\n")?;
+
+    let mut couplings_with_scores: Vec<_> = metrics
+        .couplings
+        .iter()
+        .map(|c| (c, BalanceScore::calculate(c)))
+        .collect();
+
+    couplings_with_scores.sort_by(|a, b| a.1.score.partial_cmp(&b.1.score).unwrap());
+
+    writeln!(
+        writer,
+        "| Source | Target | Strength | Distance | Score | Status |"
+    )?;
+    writeln!(
+        writer,
+        "|--------|--------|----------|----------|-------|--------|"
+    )?;
+
+    for (coupling, score) in couplings_with_scores.iter().take(15) {
+        let strength_str = match coupling.strength {
+            IntegrationStrength::Contract => "Contract",
+            IntegrationStrength::Model => "Model",
+            IntegrationStrength::Functional => "Functional",
+            IntegrationStrength::Intrusive => "Intrusive",
+        };
+        let distance_str = match coupling.distance {
+            Distance::SameFunction => "Same Fn",
+            Distance::SameModule => "Same Mod",
+            Distance::DifferentModule => "Diff Mod",
+            Distance::DifferentCrate => "External",
+        };
+        let status = match score.interpretation {
+            crate::balance::BalanceInterpretation::Balanced => "✅ Balanced",
+            crate::balance::BalanceInterpretation::Acceptable => "✅ OK",
+            crate::balance::BalanceInterpretation::NeedsReview => "🟡 Review",
+            crate::balance::BalanceInterpretation::NeedsRefactoring => "🟠 Refactor",
+            crate::balance::BalanceInterpretation::Critical => "🔴 Critical",
+        };
+
+        writeln!(
+            writer,
+            "| `{}` | `{}` | {} | {} | {:.2} | {} |",
+            truncate_path(&coupling.source, 20),
+            truncate_path(&coupling.target, 20),
+            strength_str,
+            distance_str,
+            score.score,
+            status
+        )?;
+    }
+
+    if couplings_with_scores.len() > 15 {
+        writeln!(
+            writer,
+            "\n*Showing 15 of {} couplings*",
+            couplings_with_scores.len()
+        )?;
+    }
+    writeln!(writer)?;
+
+    Ok(())
+}
+
+fn write_module_section<W: Write>(metrics: &ProjectMetrics, writer: &mut W) -> io::Result<()> {
+    if metrics.modules.is_empty() {
+        return Ok(());
+    }
+
+    writeln!(writer, "## Module Statistics\n")?;
+
+    writeln!(
+        writer,
+        "| Module | Trait Impl | Inherent Impl | Internal Deps | External Deps |"
+    )?;
+    writeln!(
+        writer,
+        "|--------|------------|---------------|---------------|---------------|"
+    )?;
+
+    let mut modules: Vec<_> = metrics.modules.iter().collect();
+    modules.sort_by(|a, b| {
+        let a_deps = a.1.internal_deps.len() + a.1.external_deps.len();
+        let b_deps = b.1.internal_deps.len() + b.1.external_deps.len();
+        b_deps.cmp(&a_deps)
+    });
+
+    for (name, module) in modules.iter().take(20) {
+        writeln!(
+            writer,
+            "| `{}` | {} | {} | {} | {} |",
+            truncate_path(name, 30),
+            module.trait_impl_count,
+            module.inherent_impl_count,
+            module.internal_deps.len(),
+            module.external_deps.len()
+        )?;
+    }
+
+    if modules.len() > 20 {
+        writeln!(writer, "\n*Showing top 20 of {} modules*", modules.len())?;
+    }
+    writeln!(writer)?;
+
+    Ok(())
+}
+
+fn write_connascence_section<W: Write>(metrics: &ProjectMetrics, writer: &mut W) -> io::Result<()> {
+    let stats = &metrics.connascence_stats;
+
+    if stats.total == 0 {
+        return Ok(());
+    }
+
+    writeln!(writer, "## Connascence Analysis\n")?;
+    writeln!(
+        writer,
+        "Connascence measures the degree to which changes in one component require changes in another."
+    )?;
+    writeln!(
+        writer,
+        "Lower strength connascence is preferred as it's easier to refactor.\n"
+    )?;
+
+    writeln!(
+        writer,
+        "| Type | Count | % | Strength | Description | Refactoring |"
+    )?;
+    writeln!(
+        writer,
+        "|------|-------|---|----------|-------------|-------------|"
+    )?;
+
+    for conn_type in [
+        ConnascenceType::Name,
+        ConnascenceType::Type,
+        ConnascenceType::Meaning,
+        ConnascenceType::Position,
+        ConnascenceType::Algorithm,
+    ] {
+        let count = stats.count(conn_type);
+        if count > 0 {
+            writeln!(
+                writer,
+                "| {:?} | {} | {:.1}% | {:.1} | {} | {} |",
+                conn_type,
+                count,
+                stats.percentage(conn_type),
+                conn_type.strength(),
+                conn_type.description(),
+                conn_type.refactoring_suggestion()
+            )?;
+        }
+    }
+    writeln!(writer)?;
+
+    writeln!(
+        writer,
+        "**Total Instances**: {} | **Average Strength**: {:.2}\n",
+        stats.total,
+        stats.average_strength()
+    )?;
+
+    // Provide interpretation
+    let avg = stats.average_strength();
+    if avg < 0.3 {
+        writeln!(
+            writer,
+            "✅ **Good**: Low average connascence strength. Codebase is loosely coupled.\n"
+        )?;
+    } else if avg < 0.5 {
+        writeln!(
+            writer,
+            "🟡 **Moderate**: Some stronger connascence present. Consider reviewing high-strength instances.\n"
+        )?;
+    } else {
+        writeln!(
+            writer,
+            "🟠 **High**: Significant strong connascence detected. Refactoring recommended.\n"
+        )?;
+    }
+
+    // Highlight position and algorithm connascence if present
+    let position_count = stats.count(ConnascenceType::Position);
+    let algorithm_count = stats.count(ConnascenceType::Algorithm);
+
+    if position_count > 0 || algorithm_count > 0 {
+        writeln!(writer, "### High-Strength Connascence\n")?;
+
+        if position_count > 0 {
+            writeln!(
+                writer,
+                "**Position Connascence** ({} instances): Functions with many positional arguments.\n",
+                position_count
+            )?;
+            writeln!(
+                writer,
+                "- Consider using builder pattern or structs for configuration\n"
+            )?;
+        }
+
+        if algorithm_count > 0 {
+            writeln!(
+                writer,
+                "**Algorithm Connascence** ({} instances): Encode/decode or serialize/deserialize pairs.\n",
+                algorithm_count
+            )?;
+            writeln!(
+                writer,
+                "- Ensure algorithm pairs are co-located and have clear contracts\n"
+            )?;
+        }
+    }
+
+    Ok(())
+}
+
+fn write_volatility_section<W: Write>(metrics: &ProjectMetrics, writer: &mut W) -> io::Result<()> {
+    writeln!(writer, "## Volatility Analysis\n")?;
+
+    if metrics.file_changes.is_empty() {
+        writeln!(
+            writer,
+            "*Git history analysis not available. Run in a git repository for volatility data.*\n"
+        )?;
+        return Ok(());
+    }
+
+    let mut high_vol: Vec<_> = metrics
+        .file_changes
+        .iter()
+        .filter(|&(_, count)| *count > 10)
+        .collect();
+
+    high_vol.sort_by(|a, b| b.1.cmp(a.1));
+
+    if high_vol.is_empty() {
+        writeln!(
+            writer,
+            "No high volatility files detected (threshold: >10 changes).\n"
+        )?;
+    } else {
+        writeln!(writer, "### High Volatility Files\n")?;
+        writeln!(
+            writer,
+            "⚠️ Strong coupling to these files increases cascading change risk.\n"
+        )?;
+        writeln!(writer, "| File | Changes |")?;
+        writeln!(writer, "|------|---------|")?;
+        for (file, count) in high_vol.iter().take(10) {
+            writeln!(writer, "| `{}` | {} |", file, count)?;
+        }
+        writeln!(writer)?;
+    }
+
+    Ok(())
+}
+
+fn write_circular_dependencies_section<W: Write>(
+    metrics: &ProjectMetrics,
+    writer: &mut W,
+) -> io::Result<()> {
+    let summary = metrics.circular_dependency_summary();
+
+    if summary.total_cycles == 0 {
+        writeln!(writer, "## Circular Dependencies\n")?;
+        writeln!(writer, "✅ No circular dependencies detected.\n")?;
+        return Ok(());
+    }
+
+    writeln!(writer, "## ⚠️ Circular Dependencies\n")?;
+    writeln!(
+        writer,
+        "Found **{} circular dependency cycle(s)** involving **{} modules**.\n",
+        summary.total_cycles, summary.affected_modules
+    )?;
+
+    writeln!(
+        writer,
+        "Circular dependencies make code harder to understand, test, and maintain."
+    )?;
+    writeln!(writer, "Consider breaking cycles by:\n")?;
+    writeln!(writer, "1. Extracting shared types into a separate module")?;
+    writeln!(writer, "2. Inverting dependencies using traits/interfaces")?;
+    writeln!(writer, "3. Moving functionality to reduce coupling\n")?;
+
+    writeln!(writer, "### Detected Cycles\n")?;
+
+    for (i, cycle) in summary.cycles.iter().take(10).enumerate() {
+        let cycle_str = cycle.join(" → ");
+        writeln!(
+            writer,
+            "{}. `{}` → `{}`",
+            i + 1,
+            cycle_str,
+            cycle.first().unwrap_or(&"?".to_string())
+        )?;
+    }
+
+    if summary.cycles.len() > 10 {
+        writeln!(
+            writer,
+            "\n*...and {} more cycles*",
+            summary.cycles.len() - 10
+        )?;
+    }
+    writeln!(writer)?;
+
+    Ok(())
+}
+
+fn write_best_practices<W: Write>(writer: &mut W) -> io::Result<()> {
+    writeln!(writer, "## Balance Guidelines\n")?;
+
+    writeln!(
+        writer,
+        "The goal is **balanced coupling**, not zero coupling.\n"
+    )?;
+
+    writeln!(writer, "### Ideal Patterns ✅\n")?;
+    writeln!(writer, "| Pattern | Example | Why It Works |")?;
+    writeln!(writer, "|---------|---------|--------------|")?;
+    writeln!(
+        writer,
+        "| Strong + Close | `impl` blocks in same module | Cohesion within boundaries |"
+    )?;
+    writeln!(
+        writer,
+        "| Weak + Far | Trait impl for external crate | Loose coupling across boundaries |"
+    )?;
+    writeln!(writer)?;
+
+    writeln!(writer, "### Problematic Patterns ❌\n")?;
+    writeln!(writer, "| Pattern | Problem | Solution |")?;
+    writeln!(writer, "|---------|---------|----------|")?;
+    writeln!(
+        writer,
+        "| Strong + Far | Global complexity | Introduce adapter or move closer |"
+    )?;
+    writeln!(
+        writer,
+        "| Strong + Volatile | Cascading changes | Add stable interface |"
+    )?;
+    writeln!(
+        writer,
+        "| Intrusive + Cross-boundary | Encapsulation violation | Extract trait API |"
+    )?;
+    writeln!(writer)?;
+
+    Ok(())
+}
+
+fn truncate_path(path: &str, max_len: usize) -> String {
+    if path.len() <= max_len {
+        path.to_string()
+    } else {
+        format!("...{}", &path[path.len() - max_len + 3..])
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::path::PathBuf;
+
+    #[test]
+    fn test_generate_summary() {
+        let metrics = ProjectMetrics::new();
+        let mut output = Vec::new();
+
+        let result = generate_summary(&metrics, &mut output);
+        assert!(result.is_ok());
+
+        let output_str = String::from_utf8(output).unwrap();
+        assert!(output_str.contains("Coupling Analysis Summary"));
+        assert!(output_str.contains("Health Grade"));
+    }
+
+    #[test]
+    fn test_generate_report() {
+        let metrics = ProjectMetrics::new();
+        let mut output = Vec::new();
+
+        let result = generate_report(&metrics, &mut output);
+        assert!(result.is_ok());
+
+        let output_str = String::from_utf8(output).unwrap();
+        assert!(output_str.contains("# Coupling Analysis Report"));
+        assert!(output_str.contains("Executive Summary"));
+    }
+
+    #[test]
+    fn test_generate_report_with_modules() {
+        use crate::metrics::ModuleMetrics;
+
+        let mut metrics = ProjectMetrics::new();
+        let mut module = ModuleMetrics::new(PathBuf::from("lib.rs"), "lib".to_string());
+        module.trait_impl_count = 3;
+        module.inherent_impl_count = 2;
+        metrics.add_module(module);
+
+        let mut output = Vec::new();
+        let result = generate_report(&metrics, &mut output);
+        assert!(result.is_ok());
+
+        let output_str = String::from_utf8(output).unwrap();
+        assert!(output_str.contains("Module Statistics"));
+    }
+
+    #[test]
+    fn test_truncate_path() {
+        assert_eq!(truncate_path("short", 10), "short");
+        assert_eq!(
+            truncate_path("this_is_a_very_long_path", 15),
+            "...ry_long_path"
+        );
+    }
+}
