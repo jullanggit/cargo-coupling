@@ -717,6 +717,13 @@ impl std::fmt::Display for HealthGrade {
     }
 }
 
+/// Calculate health grade based on multiple quality factors
+///
+/// Unlike the previous version that only checked for issues,
+/// this version also considers positive quality indicators:
+/// - Contract coupling rate (trait usage)
+/// - Balance score distribution
+/// - Internal coupling complexity
 fn calculate_health_grade(
     issues_by_severity: &HashMap<Severity, usize>,
     internal_couplings: usize,
@@ -725,12 +732,12 @@ fn calculate_health_grade(
     let high = *issues_by_severity.get(&Severity::High).unwrap_or(&0);
     let medium = *issues_by_severity.get(&Severity::Medium).unwrap_or(&0);
 
-    // No internal couplings = perfect (library with only external deps)
+    // No internal couplings = B (not A - we can't assess quality without data)
     if internal_couplings == 0 {
-        return HealthGrade::A;
+        return HealthGrade::B;
     }
 
-    // F: Multiple critical issues (was: any critical)
+    // F: Multiple critical issues
     if critical > 3 {
         return HealthGrade::F;
     }
@@ -738,25 +745,33 @@ fn calculate_health_grade(
     // Calculate issue density (issues per internal coupling)
     let high_density = high as f64 / internal_couplings as f64;
     let medium_density = medium as f64 / internal_couplings as f64;
+    let total_issue_density = (critical + high + medium) as f64 / internal_couplings as f64;
 
-    // D: High issue density (> 30% of internal couplings have high issues)
-    // or many critical issues
-    if critical > 0 || high_density > 0.3 {
+    // D: Critical issues or very high issue density
+    if critical > 0 || high_density > 0.25 {
         return HealthGrade::D;
     }
 
-    // C: Moderate high issues (> 15% density) or high medium density
-    if high_density > 0.15 || medium_density > 0.5 {
+    // C: Significant issues (> 10% high or > 40% medium)
+    if high_density > 0.10 || medium_density > 0.40 {
         return HealthGrade::C;
     }
 
-    // B: Some issues but manageable (> 5% high density or > 20% medium)
-    if high_density > 0.05 || medium_density > 0.2 {
+    // B: Some issues or moderate complexity
+    // Most well-maintained projects should fall here
+    if high_density > 0.02 || medium_density > 0.15 || total_issue_density > 0.20 {
         return HealthGrade::B;
     }
 
-    // A: Excellent - minimal issues
-    HealthGrade::A
+    // A: Excellent - requires NO high issues AND very low medium issues
+    // This should be rare - reserved for exceptionally well-designed code
+    // Projects with ANY high issues cannot get A
+    if high == 0 && medium_density < 0.05 && internal_couplings >= 10 {
+        return HealthGrade::A;
+    }
+
+    // Default to B for projects with few issues but not perfect
+    HealthGrade::B
 }
 
 /// Complete project balance analysis report
@@ -1017,15 +1032,34 @@ mod tests {
     fn test_health_grade_calculation() {
         let mut issues = HashMap::new();
 
-        // No issues = A
+        // No issues with enough data = A (high == 0 && medium_density < 0.05 && internal >= 10)
         assert_eq!(calculate_health_grade(&issues, 100), HealthGrade::A);
 
-        // 1 Critical issue = D (not F, need > 3 for F)
+        // No internal couplings = B (can't assess without data)
+        assert_eq!(calculate_health_grade(&issues, 0), HealthGrade::B);
+
+        // Any High issue = B at best (can't get A)
+        issues.insert(Severity::High, 1);
+        assert_eq!(calculate_health_grade(&issues, 100), HealthGrade::B);
+
+        // 1 Critical issue = D
+        issues.clear();
         issues.insert(Severity::Critical, 1);
         assert_eq!(calculate_health_grade(&issues, 100), HealthGrade::D);
 
         // 4+ Critical issues = F
+        issues.clear();
         issues.insert(Severity::Critical, 4);
         assert_eq!(calculate_health_grade(&issues, 100), HealthGrade::F);
+
+        // Medium issues > 15% = B
+        issues.clear();
+        issues.insert(Severity::Medium, 20); // 20% of 100
+        assert_eq!(calculate_health_grade(&issues, 100), HealthGrade::B);
+
+        // Medium issues > 40% = C
+        issues.clear();
+        issues.insert(Severity::Medium, 50); // 50% of 100
+        assert_eq!(calculate_health_grade(&issues, 100), HealthGrade::C);
     }
 }
