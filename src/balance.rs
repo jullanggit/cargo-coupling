@@ -316,11 +316,11 @@ pub struct IssueThresholds {
 impl Default for IssueThresholds {
     fn default() -> Self {
         Self {
-            strong_coupling: 0.5, // Model strength or higher
-            far_distance: 0.5,    // DifferentModule or higher
-            high_volatility: 0.5, // Medium volatility or higher
-            max_dependencies: 15, // More than 15 outgoing dependencies
-            max_dependents: 20,   // More than 20 incoming dependencies
+            strong_coupling: 0.75, // Functional strength or higher (was 0.5)
+            far_distance: 0.5,     // DifferentModule or higher
+            high_volatility: 0.75, // High volatility only (was 0.5)
+            max_dependencies: 20,  // More than 20 outgoing dependencies (was 15)
+            max_dependents: 30,    // More than 30 incoming dependencies (was 20)
         }
     }
 }
@@ -426,7 +426,7 @@ pub fn identify_issues(coupling: &CouplingMetrics) -> Vec<CouplingIssue> {
 /// Identify issues with custom thresholds
 pub fn identify_issues_with_thresholds(
     coupling: &CouplingMetrics,
-    thresholds: &IssueThresholds,
+    _thresholds: &IssueThresholds,
 ) -> Vec<CouplingIssue> {
     let mut issues = Vec::new();
 
@@ -438,65 +438,41 @@ pub fn identify_issues_with_thresholds(
 
     let balance = BalanceScore::calculate(coupling);
 
-    let strength = coupling.strength_value();
-    let distance = coupling.distance_value();
-    let volatility = coupling.volatility_value();
-
-    // Pattern 1: Global Complexity (strong coupling + long distance within workspace)
-    // Note: External crates are already filtered out above
-    if strength >= thresholds.strong_coupling && distance >= thresholds.far_distance {
-        let severity = if strength >= 0.75 {
-            Severity::High
-        } else {
-            Severity::Medium
-        };
-
-        let refactoring = if coupling.strength == IntegrationStrength::Intrusive {
-            RefactoringAction::IntroduceTrait {
-                suggested_name: format!("{}Trait", extract_type_name(&coupling.target)),
-                methods: vec!["// Extract required methods".to_string()],
-            }
-        } else {
-            RefactoringAction::MoveCloser {
-                target_location: coupling.source.split("::").next().unwrap_or("").to_string(),
-            }
-        };
-
+    // Pattern 1: Global Complexity (INTRUSIVE coupling + different module)
+    // Only flag intrusive coupling across module boundaries - functional coupling is normal
+    if coupling.strength == IntegrationStrength::Intrusive
+        && coupling.distance == Distance::DifferentModule
+    {
         issues.push(CouplingIssue {
             issue_type: IssueType::GlobalComplexity,
-            severity,
+            severity: Severity::Medium, // Medium, not High - it's internal
             source: coupling.source.clone(),
             target: coupling.target.clone(),
             description: format!(
-                "{} coupling to {} across module boundary",
-                strength_label(coupling.strength),
+                "Intrusive coupling to {} across module boundary",
                 coupling.target,
             ),
-            refactoring,
+            refactoring: RefactoringAction::IntroduceTrait {
+                suggested_name: format!("{}Trait", extract_type_name(&coupling.target)),
+                methods: vec!["// Extract required methods".to_string()],
+            },
             balance_score: balance.score,
         });
     }
 
-    // Pattern 2: Cascading Change Risk (strong coupling + high volatility)
-    if strength >= thresholds.strong_coupling && volatility >= thresholds.high_volatility {
-        let severity = if strength >= 0.75 && volatility >= 1.0 {
-            Severity::Critical
-        } else if strength >= 0.75 || volatility >= 1.0 {
-            Severity::High
-        } else {
-            Severity::Medium
-        };
-
+    // Pattern 2: Cascading Change Risk (intrusive coupling + high volatility)
+    // Only flag if volatility is actually high (from Git data)
+    if coupling.strength == IntegrationStrength::Intrusive
+        && coupling.volatility == Volatility::High
+    {
         issues.push(CouplingIssue {
             issue_type: IssueType::CascadingChangeRisk,
-            severity,
+            severity: Severity::High,
             source: coupling.source.clone(),
             target: coupling.target.clone(),
             description: format!(
-                "{} coupling to volatile component {} (changes {})",
-                strength_label(coupling.strength),
+                "Intrusive coupling to frequently-changed component {}",
                 coupling.target,
-                volatility_label(coupling.volatility)
             ),
             refactoring: RefactoringAction::StabilizeInterface {
                 interface_name: format!("{}Interface", extract_type_name(&coupling.target)),
@@ -505,55 +481,38 @@ pub fn identify_issues_with_thresholds(
         });
     }
 
-    // Pattern 3: Inappropriate Intimacy (Intrusive coupling across any boundary)
-    if coupling.strength == IntegrationStrength::Intrusive && distance > 0.0 {
-        let severity = if distance >= 1.0 {
-            Severity::Critical
-        } else if distance >= 0.5 {
-            Severity::High
-        } else {
-            Severity::Medium
-        };
-
-        issues.push(CouplingIssue {
-            issue_type: IssueType::InappropriateIntimacy,
-            severity,
-            source: coupling.source.clone(),
-            target: coupling.target.clone(),
-            description: format!(
-                "Direct internal access to {} across {} boundary",
-                coupling.target,
-                distance_label(coupling.distance)
-            ),
-            refactoring: RefactoringAction::IntroduceTrait {
-                suggested_name: format!("{}Api", extract_type_name(&coupling.target)),
-                methods: vec!["// Expose only necessary operations".to_string()],
-            },
-            balance_score: balance.score,
-        });
-    }
-
-    // Pattern 4: Unnecessary Abstraction (weak coupling + close distance + stable)
-    // Only flag if using Contract (trait) coupling for nearby stable components
-    if coupling.strength == IntegrationStrength::Contract && distance < 0.3 && volatility < 0.3 {
-        issues.push(CouplingIssue {
-            issue_type: IssueType::UnnecessaryAbstraction,
-            severity: Severity::Low,
-            source: coupling.source.clone(),
-            target: coupling.target.clone(),
-            description: format!(
-                "Trait abstraction for nearby stable component {}",
-                coupling.target
-            ),
-            refactoring: RefactoringAction::SimplifyAbstraction {
-                direct_usage: format!(
-                    "Use {} directly if only one implementation exists",
-                    coupling.target
+    // Pattern 3: Inappropriate Intimacy (Intrusive coupling across DIFFERENT MODULE only)
+    // Same module intrusive coupling is fine (it's cohesion)
+    if coupling.strength == IntegrationStrength::Intrusive
+        && coupling.distance == Distance::DifferentModule
+        && balance.score < 0.5
+    {
+        // Only add if not already added as GlobalComplexity
+        if !issues
+            .iter()
+            .any(|i| i.issue_type == IssueType::GlobalComplexity)
+        {
+            issues.push(CouplingIssue {
+                issue_type: IssueType::InappropriateIntimacy,
+                severity: Severity::Medium,
+                source: coupling.source.clone(),
+                target: coupling.target.clone(),
+                description: format!(
+                    "Direct internal access to {} across module boundary",
+                    coupling.target,
                 ),
-            },
-            balance_score: balance.score,
-        });
+                refactoring: RefactoringAction::IntroduceTrait {
+                    suggested_name: format!("{}Api", extract_type_name(&coupling.target)),
+                    methods: vec!["// Expose only necessary operations".to_string()],
+                },
+                balance_score: balance.score,
+            });
+        }
     }
+
+    // Pattern 4: Unnecessary Abstraction - DISABLED
+    // This pattern generates too much noise and is rarely actionable
+    // Trait abstractions are generally good, even for nearby stable components
 
     issues
 }
@@ -570,18 +529,24 @@ pub fn analyze_project_balance_with_thresholds(
 ) -> ProjectBalanceReport {
     let thresholds = thresholds.clone();
     let mut all_issues = Vec::new();
-    let mut balance_scores: Vec<BalanceScore> = Vec::new();
+    let mut internal_balance_scores: Vec<BalanceScore> = Vec::new();
+    let mut all_balance_scores: Vec<BalanceScore> = Vec::new();
 
     // Analyze individual couplings
+    // Only INTERNAL couplings affect the health score
     for coupling in &metrics.couplings {
         let score = BalanceScore::calculate(coupling);
-        balance_scores.push(score);
+        all_balance_scores.push(score.clone());
 
-        let issues = identify_issues_with_thresholds(coupling, &thresholds);
-        all_issues.extend(issues);
+        // Only count internal couplings for scoring
+        if coupling.distance != Distance::DifferentCrate {
+            internal_balance_scores.push(score);
+            let issues = identify_issues_with_thresholds(coupling, &thresholds);
+            all_issues.extend(issues);
+        }
     }
 
-    // Analyze module-level coupling patterns
+    // Analyze module-level coupling patterns (already filters external)
     let module_issues = analyze_module_coupling(metrics, &thresholds);
     all_issues.extend(module_issues);
 
@@ -592,22 +557,32 @@ pub fn analyze_project_balance_with_thresholds(
             .then_with(|| a.balance_score.partial_cmp(&b.balance_score).unwrap())
     });
 
-    // Calculate summary statistics
+    // Calculate summary statistics based on INTERNAL couplings only
     let total_couplings = metrics.couplings.len();
-    let balanced_count = balance_scores.iter().filter(|s| s.is_balanced()).count();
-    let needs_review = balance_scores
+    let internal_couplings = internal_balance_scores.len();
+
+    let balanced_count = internal_balance_scores
+        .iter()
+        .filter(|s| s.is_balanced())
+        .count();
+    let needs_review = internal_balance_scores
         .iter()
         .filter(|s| s.interpretation == BalanceInterpretation::NeedsReview)
         .count();
-    let needs_refactoring = balance_scores
+    let needs_refactoring = internal_balance_scores
         .iter()
         .filter(|s| s.needs_refactoring())
         .count();
 
-    let average_score = if balance_scores.is_empty() {
-        1.0
+    // Average score based on internal couplings only
+    let average_score = if internal_balance_scores.is_empty() {
+        1.0 // No internal couplings = perfect score
     } else {
-        balance_scores.iter().map(|s| s.score).sum::<f64>() / balance_scores.len() as f64
+        internal_balance_scores
+            .iter()
+            .map(|s| s.score)
+            .sum::<f64>()
+            / internal_balance_scores.len() as f64
     };
 
     // Count issues by severity
@@ -622,8 +597,8 @@ pub fn analyze_project_balance_with_thresholds(
         *issues_by_type.entry(issue.issue_type).or_insert(0) += 1;
     }
 
-    // Determine overall health grade
-    let health_grade = calculate_health_grade(&issues_by_severity, total_couplings);
+    // Determine overall health grade based on INTERNAL coupling issues
+    let health_grade = calculate_health_grade(&issues_by_severity, internal_couplings);
 
     ProjectBalanceReport {
         total_couplings,
@@ -637,7 +612,7 @@ pub fn analyze_project_balance_with_thresholds(
         issues: all_issues,
         top_priorities: Vec::new(), // Will be filled below
     }
-    .with_top_priorities(3)
+    .with_top_priorities(5) // Increased from 3 to 5 for better actionability
 }
 
 /// Analyze module-level coupling (hub detection)
@@ -744,37 +719,44 @@ impl std::fmt::Display for HealthGrade {
 
 fn calculate_health_grade(
     issues_by_severity: &HashMap<Severity, usize>,
-    total_couplings: usize,
+    internal_couplings: usize,
 ) -> HealthGrade {
     let critical = *issues_by_severity.get(&Severity::Critical).unwrap_or(&0);
     let high = *issues_by_severity.get(&Severity::High).unwrap_or(&0);
     let medium = *issues_by_severity.get(&Severity::Medium).unwrap_or(&0);
 
-    // F: Any critical issues
-    if critical > 0 {
+    // No internal couplings = perfect (library with only external deps)
+    if internal_couplings == 0 {
+        return HealthGrade::A;
+    }
+
+    // F: Multiple critical issues (was: any critical)
+    if critical > 3 {
         return HealthGrade::F;
     }
 
-    // D: Multiple high severity issues
-    if high > 2 {
+    // Calculate issue density (issues per internal coupling)
+    let high_density = high as f64 / internal_couplings as f64;
+    let medium_density = medium as f64 / internal_couplings as f64;
+
+    // D: High issue density (> 30% of internal couplings have high issues)
+    // or many critical issues
+    if critical > 0 || high_density > 0.3 {
         return HealthGrade::D;
     }
 
-    // Calculate issue ratio
-    let total_issues = high + medium;
-    let issue_ratio = if total_couplings > 0 {
-        total_issues as f64 / total_couplings as f64
-    } else {
-        0.0
-    };
-
-    if high > 0 || issue_ratio > 0.2 {
-        HealthGrade::C
-    } else if issue_ratio > 0.1 {
-        HealthGrade::B
-    } else {
-        HealthGrade::A
+    // C: Moderate high issues (> 15% density) or high medium density
+    if high_density > 0.15 || medium_density > 0.5 {
+        return HealthGrade::C;
     }
+
+    // B: Some issues but manageable (> 5% high density or > 20% medium)
+    if high_density > 0.05 || medium_density > 0.2 {
+        return HealthGrade::B;
+    }
+
+    // A: Excellent - minimal issues
+    HealthGrade::A
 }
 
 /// Complete project balance analysis report
@@ -810,18 +792,23 @@ impl ProjectBalanceReport {
 }
 
 /// Calculate overall project balance score
+///
+/// Only considers internal couplings (not external crate dependencies)
+/// since external dependencies are outside the developer's control.
 pub fn calculate_project_score(metrics: &ProjectMetrics) -> f64 {
-    if metrics.couplings.is_empty() {
-        return 1.0;
-    }
-
-    let scores: Vec<f64> = metrics
+    // Filter to internal couplings only
+    let internal_scores: Vec<f64> = metrics
         .couplings
         .iter()
+        .filter(|c| c.distance != Distance::DifferentCrate)
         .map(|c| BalanceScore::calculate(c).score)
         .collect();
 
-    scores.iter().sum::<f64>() / scores.len() as f64
+    if internal_scores.is_empty() {
+        return 1.0; // No internal couplings = perfect score
+    }
+
+    internal_scores.iter().sum::<f64>() / internal_scores.len() as f64
 }
 
 // Helper functions
@@ -836,7 +823,8 @@ fn extract_type_name(path: &str) -> String {
         .collect()
 }
 
-fn strength_label(strength: IntegrationStrength) -> &'static str {
+/// Get human-readable label for integration strength
+pub fn strength_label(strength: IntegrationStrength) -> &'static str {
     match strength {
         IntegrationStrength::Intrusive => "Intrusive",
         IntegrationStrength::Functional => "Functional",
@@ -845,7 +833,8 @@ fn strength_label(strength: IntegrationStrength) -> &'static str {
     }
 }
 
-fn distance_label(distance: Distance) -> &'static str {
+/// Get human-readable label for distance
+pub fn distance_label(distance: Distance) -> &'static str {
     match distance {
         Distance::SameFunction => "same function",
         Distance::SameModule => "same module",
@@ -854,7 +843,8 @@ fn distance_label(distance: Distance) -> &'static str {
     }
 }
 
-fn volatility_label(volatility: Volatility) -> &'static str {
+/// Get human-readable label for volatility
+pub fn volatility_label(volatility: Volatility) -> &'static str {
     match volatility {
         Volatility::Low => "rarely",
         Volatility::Medium => "sometimes",
@@ -974,8 +964,9 @@ mod tests {
 
     #[test]
     fn test_identify_cascading_change() {
+        // Now only INTRUSIVE + High volatility triggers cascading change risk
         let coupling = make_coupling(
-            IntegrationStrength::Functional,
+            IntegrationStrength::Intrusive,
             Distance::SameModule,
             Volatility::High,
         );
@@ -983,12 +974,15 @@ mod tests {
         assert!(
             issues
                 .iter()
-                .any(|i| i.issue_type == IssueType::CascadingChangeRisk)
+                .any(|i| i.issue_type == IssueType::CascadingChangeRisk),
+            "Intrusive coupling + High volatility should detect CascadingChangeRisk"
         );
     }
 
     #[test]
     fn test_identify_inappropriate_intimacy() {
+        // Intrusive + DifferentModule now detects GlobalComplexity (not InappropriateIntimacy)
+        // because they overlap and GlobalComplexity takes precedence
         let coupling = make_coupling(
             IntegrationStrength::Intrusive,
             Distance::DifferentModule,
@@ -998,7 +992,8 @@ mod tests {
         assert!(
             issues
                 .iter()
-                .any(|i| i.issue_type == IssueType::InappropriateIntimacy)
+                .any(|i| i.issue_type == IssueType::GlobalComplexity),
+            "Intrusive + DifferentModule should detect GlobalComplexity"
         );
     }
 
@@ -1011,8 +1006,11 @@ mod tests {
             Volatility::Low,
         );
         let issues = identify_issues(&coupling);
-        // May have some low-severity issues but no critical/high
-        assert!(issues.iter().all(|i| i.severity <= Severity::Medium));
+        // Model coupling should have no issues (only Intrusive triggers issues)
+        assert!(
+            issues.is_empty(),
+            "Model coupling should not generate issues"
+        );
     }
 
     #[test]
@@ -1022,8 +1020,12 @@ mod tests {
         // No issues = A
         assert_eq!(calculate_health_grade(&issues, 100), HealthGrade::A);
 
-        // Critical issue = F
+        // 1 Critical issue = D (not F, need > 3 for F)
         issues.insert(Severity::Critical, 1);
+        assert_eq!(calculate_health_grade(&issues, 100), HealthGrade::D);
+
+        // 4+ Critical issues = F
+        issues.insert(Severity::Critical, 4);
         assert_eq!(calculate_health_grade(&issues, 100), HealthGrade::F);
     }
 }
