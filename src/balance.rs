@@ -747,30 +747,29 @@ fn calculate_health_grade(
     let medium_density = medium as f64 / internal_couplings as f64;
     let total_issue_density = (critical + high + medium) as f64 / internal_couplings as f64;
 
-    // D: Critical issues or very high issue density
-    if critical > 0 || high_density > 0.25 {
+    // D: Critical issues or very high issue density (> 5% high)
+    if critical > 0 || high_density > 0.05 {
         return HealthGrade::D;
     }
 
-    // C: Significant issues (> 10% high or > 40% medium)
-    if high_density > 0.10 || medium_density > 0.40 {
+    // C: Any high issues OR high medium density (> 15%)
+    // Projects with structural issues that need attention
+    if high > 0 || medium_density > 0.15 {
         return HealthGrade::C;
     }
 
-    // B: Some issues or moderate complexity
-    // Most well-maintained projects should fall here
-    if high_density > 0.02 || medium_density > 0.15 || total_issue_density > 0.20 {
+    // B: Some medium issues but manageable (> 5% medium density)
+    if medium_density > 0.05 || total_issue_density > 0.10 {
         return HealthGrade::B;
     }
 
-    // A: Excellent - requires NO high issues AND very low medium issues
-    // This should be rare - reserved for exceptionally well-designed code
-    // Projects with ANY high issues cannot get A
-    if high == 0 && medium_density < 0.05 && internal_couplings >= 10 {
+    // A: Excellent - no high issues AND very low medium issues (< 5%)
+    // Reserved for exceptionally well-designed code
+    if high == 0 && medium_density <= 0.05 && internal_couplings >= 10 {
         return HealthGrade::A;
     }
 
-    // Default to B for projects with few issues but not perfect
+    // Default to B for projects with few issues
     HealthGrade::B
 }
 
@@ -1032,15 +1031,20 @@ mod tests {
     fn test_health_grade_calculation() {
         let mut issues = HashMap::new();
 
-        // No issues with enough data = A (high == 0 && medium_density < 0.05 && internal >= 10)
+        // No issues with enough data = A (high == 0 && medium_density <= 0.05 && internal >= 10)
         assert_eq!(calculate_health_grade(&issues, 100), HealthGrade::A);
 
         // No internal couplings = B (can't assess without data)
         assert_eq!(calculate_health_grade(&issues, 0), HealthGrade::B);
 
-        // Any High issue = B at best (can't get A)
+        // Any High issue = C (structural issues)
         issues.insert(Severity::High, 1);
-        assert_eq!(calculate_health_grade(&issues, 100), HealthGrade::B);
+        assert_eq!(calculate_health_grade(&issues, 100), HealthGrade::C);
+
+        // High density > 5% = D
+        issues.clear();
+        issues.insert(Severity::High, 6); // 6% of 100
+        assert_eq!(calculate_health_grade(&issues, 100), HealthGrade::D);
 
         // 1 Critical issue = D
         issues.clear();
@@ -1052,14 +1056,14 @@ mod tests {
         issues.insert(Severity::Critical, 4);
         assert_eq!(calculate_health_grade(&issues, 100), HealthGrade::F);
 
-        // Medium issues > 15% = B
+        // Medium issues > 15% = C
         issues.clear();
         issues.insert(Severity::Medium, 20); // 20% of 100
-        assert_eq!(calculate_health_grade(&issues, 100), HealthGrade::B);
-
-        // Medium issues > 40% = C
-        issues.clear();
-        issues.insert(Severity::Medium, 50); // 50% of 100
         assert_eq!(calculate_health_grade(&issues, 100), HealthGrade::C);
+
+        // Medium issues > 5% but <= 15% = B
+        issues.clear();
+        issues.insert(Severity::Medium, 10); // 10% of 100
+        assert_eq!(calculate_health_grade(&issues, 100), HealthGrade::B);
     }
 }
