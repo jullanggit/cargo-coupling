@@ -752,9 +752,9 @@ fn calculate_health_grade(
         return HealthGrade::D;
     }
 
-    // C: Any high issues OR high medium density (> 15%)
+    // C: Any high issues OR high medium density (> 25%)
     // Projects with structural issues that need attention
-    if high > 0 || medium_density > 0.15 {
+    if high > 0 || medium_density > 0.25 {
         return HealthGrade::C;
     }
 
@@ -1056,14 +1056,14 @@ mod tests {
         issues.insert(Severity::Critical, 4);
         assert_eq!(calculate_health_grade(&issues, 100), HealthGrade::F);
 
-        // Medium issues > 15% = C
+        // Medium issues > 25% = C
         issues.clear();
-        issues.insert(Severity::Medium, 20); // 20% of 100
+        issues.insert(Severity::Medium, 30); // 30% of 100
         assert_eq!(calculate_health_grade(&issues, 100), HealthGrade::C);
 
-        // Medium issues > 5% but <= 15% = B
+        // Medium issues > 5% but <= 25% = B
         issues.clear();
-        issues.insert(Severity::Medium, 10); // 10% of 100
+        issues.insert(Severity::Medium, 20); // 20% of 100
         assert_eq!(calculate_health_grade(&issues, 100), HealthGrade::B);
     }
 }
