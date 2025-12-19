@@ -54,6 +54,14 @@ pub enum IssueType {
     UnnecessaryAbstraction,
     /// Circular dependency detected
     CircularDependency,
+
+    // === APOSD-inspired issues (A Philosophy of Software Design) ===
+    /// Module with interface complexity close to implementation complexity
+    ShallowModule,
+    /// Method that only delegates to another method without adding value
+    PassThroughMethod,
+    /// Module requiring too much knowledge to understand/modify
+    HighCognitiveLoad,
 }
 
 impl std::fmt::Display for IssueType {
@@ -66,6 +74,10 @@ impl std::fmt::Display for IssueType {
             IssueType::HighAfferentCoupling => write!(f, "High Afferent Coupling"),
             IssueType::UnnecessaryAbstraction => write!(f, "Unnecessary Abstraction"),
             IssueType::CircularDependency => write!(f, "Circular Dependency"),
+            // APOSD-inspired
+            IssueType::ShallowModule => write!(f, "Shallow Module"),
+            IssueType::PassThroughMethod => write!(f, "Pass-Through Method"),
+            IssueType::HighCognitiveLoad => write!(f, "High Cognitive Load"),
         }
     }
 }
@@ -94,6 +106,16 @@ impl IssueType {
             }
             IssueType::CircularDependency => {
                 "Circular dependencies make it impossible to understand, test, or modify components in isolation."
+            }
+            // APOSD-inspired descriptions
+            IssueType::ShallowModule => {
+                "Interface complexity is close to implementation complexity. The module doesn't hide enough complexity behind a simple interface. (APOSD: Deep vs Shallow Modules)"
+            }
+            IssueType::PassThroughMethod => {
+                "Method only delegates to another method without adding significant functionality. Indicates unclear responsibility division. (APOSD: Pass-Through Methods)"
+            }
+            IssueType::HighCognitiveLoad => {
+                "Module requires too much knowledge to understand and modify. Too many public APIs, dependencies, or complex type signatures. (APOSD: Cognitive Load)"
             }
         }
     }

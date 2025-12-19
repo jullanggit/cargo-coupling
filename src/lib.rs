@@ -37,6 +37,7 @@
 //! - High volatility + strong coupling = Bad (cascading changes)
 
 pub mod analyzer;
+pub mod aposd;
 pub mod balance;
 pub mod config;
 pub mod connascence;
@@ -56,7 +57,7 @@ pub use balance::{
     analyze_project_balance_with_thresholds, calculate_project_score,
 };
 pub use config::{
-    CompiledConfig, ConfigError, CouplingConfig, ThresholdsConfig, VolatilityConfig,
+    AposdConfig, CompiledConfig, ConfigError, CouplingConfig, ThresholdsConfig, VolatilityConfig,
     load_compiled_config, load_config,
 };
 pub use connascence::{
@@ -77,3 +78,9 @@ pub use temporal::{
 };
 pub use volatility::{VolatilityAnalyzer, VolatilityError, VolatilityStats};
 pub use workspace::{CrateInfo, WorkspaceError, WorkspaceInfo};
+
+// APOSD (A Philosophy of Software Design) metrics
+pub use aposd::{
+    analyze_aposd, AposdAnalysis, AposdIssueCounts, CognitiveLoadLevel, CognitiveLoadMetrics,
+    ModuleDepthClass, ModuleDepthMetrics, PassThroughMethodInfo,
+};

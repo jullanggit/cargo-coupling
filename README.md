@@ -85,6 +85,7 @@ cargo coupling --no-git ./src
 - **5-Dimensional Analysis**: Measures Integration Strength, Distance, Volatility, Connascence, and Temporal Coupling
 - **Balance Score**: Calculates overall coupling balance (0.0 - 1.0)
 - **AI-Friendly Output**: `--ai` flag generates output optimized for coding agents (Claude, Copilot, etc.)
+- **APOSD Metrics**: Detects shallow modules, pass-through methods, and high cognitive load (inspired by "A Philosophy of Software Design")
 - **Connascence Detection**: Identifies coupling types (Name, Type, Position, Algorithm)
 - **Temporal Coupling Detection**: Detects execution order dependencies and Rust-specific patterns
 - **Issue Detection**: Automatically identifies problematic coupling patterns
@@ -178,6 +179,121 @@ The analyzer tracks lifecycle methods to detect initialization order dependencie
 6. **Stop**: `stop`, `close`, `disconnect`
 7. **Cleanup**: `cleanup`, `destroy`, `shutdown`
 
+## APOSD Metrics
+
+> **Note**: APOSD metrics are **informational only** and do not affect the Health Grade calculation. The grade is determined solely by traditional coupling metrics (Integration Strength, Distance, Volatility).
+
+Based on John Ousterhout's ["A Philosophy of Software Design"](https://web.stanford.edu/~ouster/cgi-bin/book.php) (2nd Edition), cargo-coupling detects the following design anti-patterns:
+
+### Module Depth
+
+Measures whether a module provides a simple interface that hides complex implementation.
+
+| Classification | Depth Ratio | Description |
+|----------------|-------------|-------------|
+| Very Deep | >= 10.0 | Excellent abstraction (like Unix I/O) |
+| Deep | >= 5.0 | Good hiding of complexity |
+| Moderate | >= 2.0 | Acceptable design |
+| Shallow | >= 1.0 | Interface nearly as complex as implementation ⚠️ |
+| Very Shallow | < 1.0 | Interface MORE complex than implementation ⚠️ |
+
+**Depth Ratio** = Implementation Complexity / Interface Complexity
+
+### Pass-Through Methods
+
+Detects methods that simply delegate to another method without adding significant functionality:
+
+```rust
+// ❌ Pass-through method (Red Flag)
+impl Service {
+    pub fn process(&self, data: Data) -> Result<Output> {
+        self.inner.process(data)  // Just delegation
+    }
+}
+
+// ✅ Deep method (Good)
+impl Service {
+    pub fn process(&self, data: Data) -> Result<Output> {
+        let validated = self.validate(data)?;
+        let transformed = self.transform(validated);
+        self.inner.process(transformed)
+    }
+}
+```
+
+### Cognitive Load
+
+Estimates how much a developer needs to know to work with a module:
+
+| Level | Score | Description |
+|-------|-------|-------------|
+| Low | < 5.0 | Easy to understand |
+| Moderate | 5.0 - 15.0 | Manageable complexity |
+| High | 15.0 - 30.0 | Requires significant effort ⚠️ |
+| Very High | > 30.0 | Overwhelming complexity ⚠️ |
+
+Factors considered:
+- Number of public APIs
+- Number of dependencies
+- Average parameter count
+- Generic type parameters
+- Trait bounds
+- Control flow complexity
+
+### APOSD and Rust Compatibility
+
+APOSD concepts generally align well with Rust. This tool is **Rust-optimized** and automatically excludes idiomatic Rust patterns from detection.
+
+**Good Compatibility:**
+- Rust's visibility system (`pub`, `pub(crate)`, private) naturally supports information hiding
+- Traits enable deep abstractions with simple interfaces
+- RAII (Drop trait) reduces temporal coupling automatically
+
+**Excluded from Pass-Through Detection (Rust Idioms):**
+
+The following patterns are automatically excluded because they are intentional Rust idioms:
+
+| Category | Patterns |
+|----------|----------|
+| **Conversion Methods** | `as_*`, `into_*`, `from_*`, `to_*` |
+| **Accessor Methods** | `get_*`, `set_*`, `*_ref`, `*_mut` |
+| **Trait Implementations** | `deref`, `deref_mut`, `as_ref`, `as_mut`, `borrow`, `clone`, `default`, `eq`, `cmp`, `hash`, `fmt`, `drop`, `index` |
+| **Builder Pattern** | `with_*`, `and_*` |
+| **Iterator Methods** | `iter`, `iter_mut`, `into_iter` |
+| **Simple Accessors** | `len`, `is_empty`, `capacity`, `inner`, `get`, `new` |
+| **Error Propagation** | Methods using `?` operator |
+
+**Example - Not Flagged:**
+```rust
+// These are Rust idioms, NOT design issues:
+
+impl MyType {
+    pub fn as_str(&self) -> &str { &self.inner }     // Conversion
+    pub fn into_inner(self) -> Inner { self.inner }  // Ownership transfer
+    pub fn len(&self) -> usize { self.data.len() }   // Simple accessor
+}
+
+impl Deref for MyType {
+    fn deref(&self) -> &Self::Target { &self.inner } // Trait impl
+}
+
+fn process(&self) -> Result<T> {
+    self.inner.process()?  // Error propagation with `?`
+}
+```
+
+**Flagged as Potential Issues:**
+```rust
+// These MAY indicate design issues:
+
+impl Service {
+    // Just delegates without adding value - consider if needed
+    pub fn execute(&self, cmd: Command) -> Output {
+        self.executor.execute(cmd)
+    }
+}
+```
+
 ## Balance Equation
 
 ```
@@ -213,6 +329,82 @@ Options:
       --max-dependents <N>      Max incoming dependencies [default: 30]
   -h, --help                    Print help
   -V, --version                 Print version
+```
+
+## Thresholds
+
+### Issue Detection Thresholds
+
+The tool uses the following default thresholds for detecting coupling issues:
+
+| Threshold | Default | CLI Flag | Description |
+|-----------|---------|----------|-------------|
+| Strong Coupling | 0.75 | - | Minimum strength value considered "strong" (Intrusive level) |
+| Far Distance | 0.50 | - | Minimum distance value considered "far" (DifferentModule+) |
+| High Volatility | 0.75 | - | Minimum volatility value considered "high" |
+| Max Dependencies | 20 | `--max-deps` | Outgoing dependencies before flagging High Efferent Coupling |
+| Max Dependents | 30 | `--max-dependents` | Incoming dependencies before flagging High Afferent Coupling |
+
+### Health Grade Calculation
+
+Health grades are calculated based on internal couplings only (external crate dependencies are excluded):
+
+| Grade | Criteria |
+|-------|----------|
+| **A (Excellent)** | No high issues, medium density <= 5%, and >= 10 internal couplings |
+| **B (Good)** | Medium density > 5% or total issue density > 10%, but no critical issues |
+| **C (Acceptable)** | Any high issues OR medium density > 25% |
+| **D (Needs Improvement)** | Any critical issues OR high density > 5% |
+| **F (Critical Issues)** | More than 3 critical issues |
+
+### Severity Classification
+
+Issues are classified by severity based on:
+
+| Severity | Criteria |
+|----------|----------|
+| **Critical** | Multiple critical issues detected (circular dependencies, etc.) |
+| **High** | Count > threshold × 2 (e.g., > 40 dependencies when threshold is 20) |
+| **Medium** | Count > threshold but <= threshold × 2 |
+| **Low** | Minor issues, generally informational |
+
+### APOSD Configuration
+
+Configure APOSD metrics detection in `.coupling.toml`:
+
+```toml
+[aposd]
+# Minimum depth ratio to consider a module "deep" (default: 2.0)
+min_depth_ratio = 2.0
+
+# Maximum cognitive load score before flagging (default: 15.0)
+max_cognitive_load = 15.0
+
+# Enable/disable automatic exclusion of Rust idioms (default: true)
+exclude_rust_idioms = true
+
+# Additional method prefixes to exclude from pass-through detection
+exclude_prefixes = ["my_custom_", "legacy_"]
+
+# Additional specific method names to exclude
+exclude_methods = ["special_delegate", "wrapper_call"]
+```
+
+**Configuration Options:**
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `min_depth_ratio` | 2.0 | Modules with depth ratio below this are flagged as "shallow" |
+| `max_cognitive_load` | 15.0 | Modules with load score above this are flagged as "high load" |
+| `exclude_rust_idioms` | true | Auto-exclude Rust patterns (`as_*`, `into_*`, `deref`, etc.) |
+| `exclude_prefixes` | [] | Custom prefixes to exclude from pass-through detection |
+| `exclude_methods` | [] | Custom method names to exclude from pass-through detection |
+
+**Example - Disabling Rust Idiom Exclusion:**
+```toml
+[aposd]
+# Detect ALL pass-through methods, including Rust idioms
+exclude_rust_idioms = false
 ```
 
 ## Output Example
@@ -513,9 +705,39 @@ mutex.lock();
 mutex.unlock();
 ```
 
+## Limitations
+
+**This tool is a measurement aid, not an absolute authority on code quality.**
+
+Please keep the following limitations in mind:
+
+### What This Tool Cannot Do
+
+- **Understand Business Context**: The tool analyzes structural patterns but cannot understand why certain couplings exist. Some "problematic" patterns may be intentional design decisions.
+- **Replace Human Judgment**: Coupling metrics are heuristics. A high coupling score doesn't always mean bad code, and a low score doesn't guarantee good design.
+- **Detect All Issues**: Static analysis has inherent limitations. Runtime behavior, dynamic dispatch, and macro-generated code may not be fully analyzed.
+- **Provide Perfect Thresholds**: The default thresholds are calibrated for typical Rust projects but may not fit every codebase. Adjust them based on your project's needs.
+
+### Important Considerations
+
+- **External Dependencies Are Excluded**: The health grade only considers internal couplings. Dependencies on external crates (serde, tokio, etc.) are not penalized since you cannot control their design.
+- **Git History Affects Volatility**: If Git history is unavailable or limited, volatility analysis will be incomplete.
+- **Small Projects May Score Differently**: Projects with very few internal couplings (< 10) may receive a Grade B by default, as there's insufficient data for accurate assessment.
+- **Heuristic-Based Detection**: Temporal coupling and connascence detection use pattern matching heuristics, which may produce false positives or miss some patterns.
+
+### Recommended Usage
+
+1. **Use as a Starting Point**: The tool highlights areas worth investigating, not definitive problems.
+2. **Combine with Code Review**: Human review should validate any suggested refactoring.
+3. **Track Trends Over Time**: Use the tool regularly to track coupling trends rather than focusing on absolute scores.
+4. **Customize Thresholds**: Adjust `--max-deps` and `--max-dependents` to match your project's architecture.
+
+**The goal is to provide visibility into coupling patterns, empowering developers to make informed decisions.**
+
 ## References
 
 - [Vlad Khononov - "Balancing Coupling in Software Design"](https://www.amazon.com/dp/B0FVDYKJYQ)
+- [John Ousterhout - "A Philosophy of Software Design" (2nd Edition)](https://web.stanford.edu/~ouster/cgi-bin/book.php)
 - [Meilir Page-Jones - Connascence](https://en.wikipedia.org/wiki/Connascence)
 
 ## Contributing

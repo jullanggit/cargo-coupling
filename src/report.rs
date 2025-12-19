@@ -4,6 +4,8 @@
 
 use std::io::{self, Write};
 
+use crate::aposd::analyze_aposd;
+use crate::config::AposdConfig;
 use crate::balance::{
     BalanceScore, IssueThresholds, ProjectBalanceReport, Severity,
     analyze_project_balance_with_thresholds,
@@ -119,6 +121,50 @@ pub fn generate_summary_with_thresholds<W: Write>(
                 "    High-strength: Position={}, Algorithm={}",
                 position, algorithm
             )?;
+        }
+    }
+
+    // APOSD metrics (A Philosophy of Software Design)
+    // Try to analyze if we have module paths
+    if !metrics.modules.is_empty() {
+        // Get the first module's parent directory as the project path
+        if let Some(first_module) = metrics.modules.values().next() {
+            if let Some(parent) = first_module.path.parent() {
+                let aposd_config = AposdConfig::default();
+                let aposd = analyze_aposd(parent, metrics, &aposd_config);
+                let counts = aposd.issue_counts();
+
+                if counts.has_issues() {
+                    writeln!(writer)?;
+                    writeln!(writer, "  APOSD Metrics:")?;
+                    if counts.shallow_modules > 0 {
+                        writeln!(
+                            writer,
+                            "    Shallow Modules: {} (interface ≈ implementation)",
+                            counts.shallow_modules
+                        )?;
+                    }
+                    if counts.passthrough_methods > 0 {
+                        writeln!(
+                            writer,
+                            "    Pass-Through Methods: {} (simple delegation)",
+                            counts.passthrough_methods
+                        )?;
+                    }
+                    if counts.high_cognitive_load > 0 {
+                        writeln!(
+                            writer,
+                            "    High Cognitive Load: {} modules",
+                            counts.high_cognitive_load
+                        )?;
+                    }
+                }
+
+                // Show average depth if available
+                if let Some(avg_depth) = aposd.average_depth_ratio() {
+                    writeln!(writer, "    Avg Module Depth: {:.1}", avg_depth)?;
+                }
+            }
         }
     }
 
@@ -889,6 +935,87 @@ pub fn generate_ai_output_with_thresholds<W: Write>(
             writeln!(writer, "  {} → {}", cycle.join(" → "), cycle.first().unwrap_or(&"?".to_string()))?;
         }
         writeln!(writer)?;
+    }
+
+    // APOSD metrics (A Philosophy of Software Design)
+    if !metrics.modules.is_empty() {
+        if let Some(first_module) = metrics.modules.values().next() {
+            if let Some(parent) = first_module.path.parent() {
+                let aposd_config = AposdConfig::default();
+                let aposd = analyze_aposd(parent, metrics, &aposd_config);
+                let counts = aposd.issue_counts();
+
+                if counts.has_issues() {
+                    writeln!(writer, "APOSD Design Issues:")?;
+
+                    // Shallow modules
+                    let shallow = aposd.shallow_modules();
+                    if !shallow.is_empty() {
+                        writeln!(writer)?;
+                        writeln!(
+                            writer,
+                            "Shallow Modules ({}) - Interface complexity ≈ Implementation:",
+                            shallow.len()
+                        )?;
+                        for (i, module) in shallow.iter().take(5).enumerate() {
+                            let ratio = module.depth_ratio().unwrap_or(0.0);
+                            writeln!(
+                                writer,
+                                "  {}. {} (depth ratio: {:.1})",
+                                i + 1,
+                                module.module_name,
+                                ratio
+                            )?;
+                        }
+                    }
+
+                    // Pass-through methods
+                    let passthroughs = aposd.confirmed_passthroughs();
+                    if !passthroughs.is_empty() {
+                        writeln!(writer)?;
+                        writeln!(
+                            writer,
+                            "Pass-Through Methods ({}) - Simple delegation without added value:",
+                            passthroughs.len()
+                        )?;
+                        for (i, pt) in passthroughs.iter().take(5).enumerate() {
+                            writeln!(
+                                writer,
+                                "  {}. {}::{} → {}",
+                                i + 1,
+                                pt.module_name,
+                                pt.method_name,
+                                pt.delegated_to
+                            )?;
+                        }
+                    }
+
+                    // High cognitive load
+                    let high_load = aposd.high_load_modules();
+                    if !high_load.is_empty() {
+                        writeln!(writer)?;
+                        writeln!(
+                            writer,
+                            "High Cognitive Load ({}) - Too complex to understand easily:",
+                            high_load.len()
+                        )?;
+                        for (i, module) in high_load.iter().take(5).enumerate() {
+                            writeln!(
+                                writer,
+                                "  {}. {} (load score: {:.1}, {} public APIs, {} deps)",
+                                i + 1,
+                                module.module_name,
+                                module.cognitive_load_score(),
+                                module.public_api_count,
+                                module.dependency_count
+                            )?;
+                        }
+                    }
+
+                    writeln!(writer)?;
+                }
+            }
+        }
     }
 
     writeln!(writer, "────────────────────────────────────────────────────────────")?;
