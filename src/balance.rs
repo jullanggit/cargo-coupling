@@ -600,10 +600,7 @@ pub fn analyze_project_balance_with_thresholds(
     let average_score = if internal_balance_scores.is_empty() {
         1.0 // No internal couplings = perfect score
     } else {
-        internal_balance_scores
-            .iter()
-            .map(|s| s.score)
-            .sum::<f64>()
+        internal_balance_scores.iter().map(|s| s.score).sum::<f64>()
             / internal_balance_scores.len() as f64
     };
 

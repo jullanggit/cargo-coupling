@@ -81,6 +81,6 @@ pub use workspace::{CrateInfo, WorkspaceError, WorkspaceInfo};
 
 // APOSD (A Philosophy of Software Design) metrics
 pub use aposd::{
-    analyze_aposd, AposdAnalysis, AposdIssueCounts, CognitiveLoadLevel, CognitiveLoadMetrics,
-    ModuleDepthClass, ModuleDepthMetrics, PassThroughMethodInfo,
+    AposdAnalysis, AposdIssueCounts, CognitiveLoadLevel, CognitiveLoadMetrics, ModuleDepthClass,
+    ModuleDepthMetrics, PassThroughMethodInfo, analyze_aposd,
 };

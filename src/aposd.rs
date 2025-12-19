@@ -26,7 +26,7 @@ use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
 
-use syn::{visit::Visit, Expr, ItemFn, ItemImpl, Stmt};
+use syn::{Expr, ItemFn, ItemImpl, Stmt, visit::Visit};
 
 use crate::config::AposdConfig;
 use crate::metrics::ProjectMetrics;
@@ -708,20 +708,17 @@ impl<'a> AposdVisitor<'a> {
             Expr::Call(call) => {
                 // Try to extract a readable name from the function expression
                 let callee = match call.func.as_ref() {
-                    Expr::Path(path) => {
-                        path.path
-                            .segments
-                            .iter()
-                            .map(|s| s.ident.to_string())
-                            .collect::<Vec<_>>()
-                            .join("::")
-                    }
-                    Expr::Field(field) => {
-                        match &field.member {
-                            syn::Member::Named(ident) => format!("_.{}", ident),
-                            syn::Member::Unnamed(index) => format!("_.{}", index.index),
-                        }
-                    }
+                    Expr::Path(path) => path
+                        .path
+                        .segments
+                        .iter()
+                        .map(|s| s.ident.to_string())
+                        .collect::<Vec<_>>()
+                        .join("::"),
+                    Expr::Field(field) => match &field.member {
+                        syn::Member::Named(ident) => format!("_.{}", ident),
+                        syn::Member::Unnamed(index) => format!("_.{}", index.index),
+                    },
                     _ => "unknown".to_string(),
                 };
                 let args_count = call.args.len();
@@ -764,11 +761,7 @@ impl<'ast, 'a> Visit<'ast> for AposdVisitor<'a> {
                 }
 
                 // Check for pass-through pattern
-                self.check_passthrough(
-                    &method.sig.ident.to_string(),
-                    &method.sig,
-                    &method.block,
-                );
+                self.check_passthrough(&method.sig.ident.to_string(), &method.sig, &method.block);
             }
         }
 

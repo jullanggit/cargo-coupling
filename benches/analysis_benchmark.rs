@@ -4,7 +4,7 @@
 //! ensuring it works in any environment without hardcoded paths.
 
 use cargo_coupling::{analyze_project, analyze_project_balance};
-use criterion::{criterion_group, criterion_main, Criterion};
+use criterion::{Criterion, criterion_group, criterion_main};
 use std::path::PathBuf;
 
 /// Get the src directory of this project for benchmarking
