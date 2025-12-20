@@ -106,6 +106,19 @@ BALANCE = (STRENGTH XOR DISTANCE) OR NOT VOLATILITY
 - Strong + Far + Stable = 🤔 Acceptable
 - Strong + Far + Volatile = ❌ Needs Refactoring
 
+## Grade System
+
+| Grade | Description | Action |
+|-------|-------------|--------|
+| **S** | Exceptional - possibly over-engineered | Consider simplifying |
+| **A** | Excellent - no change needed | Target! |
+| **B** | Good (standard baseline) | Acceptable |
+| **C** | Acceptable | Minor fixes |
+| **D** | Needs Improvement | Take action |
+| **F** | Critical Issues | Urgent |
+
+**Philosophy**: Aim for A, not S. S may indicate over-engineering.
+
 ## Issue Types Detected
 
 | Issue | Severity | Description |
