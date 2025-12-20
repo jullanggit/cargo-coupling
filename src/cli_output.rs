@@ -253,12 +253,24 @@ pub struct ImpactAnalysis {
     pub volatility: String,
 }
 
-/// Information about a dependency relationship
+/// Information about a dependency relationship (grouped by module)
 #[derive(Debug, Clone, Serialize)]
 pub struct DependencyInfo {
+    /// Target/source module name
     pub module: String,
-    pub strength: String,
+    /// Distance to the module
     pub distance: String,
+    /// Coupling counts by strength type
+    pub strengths: Vec<StrengthCount>,
+    /// Total coupling count
+    pub total_count: usize,
+}
+
+/// Count of couplings by strength type
+#[derive(Debug, Clone, Serialize)]
+pub struct StrengthCount {
+    pub strength: String,
+    pub count: usize,
 }
 
 /// Cascading impact analysis
@@ -281,9 +293,9 @@ pub fn analyze_impact(metrics: &ProjectMetrics, module_name: &str) -> Option<Imp
     let cycle_modules: HashSet<String> = circular_deps.iter().flatten().cloned().collect();
     let in_cycle = cycle_modules.contains(&module);
 
-    // Collect direct dependencies and dependents
-    let mut dependencies: Vec<DependencyInfo> = Vec::new();
-    let mut dependents: Vec<DependencyInfo> = Vec::new();
+    // Collect and group dependencies by target module
+    let mut dep_map: HashMap<String, (String, HashMap<String, usize>)> = HashMap::new();
+    let mut dependent_map: HashMap<String, (String, HashMap<String, usize>)> = HashMap::new();
     let mut volatility_max = crate::metrics::Volatility::Low;
 
     for coupling in &metrics.couplings {
@@ -292,25 +304,74 @@ pub fn analyze_impact(metrics: &ProjectMetrics, module_name: &str) -> Option<Imp
         }
 
         if coupling.source == module {
-            dependencies.push(DependencyInfo {
-                module: coupling.target.clone(),
-                strength: format!("{:?}", coupling.strength),
-                distance: format!("{:?}", coupling.distance),
-            });
+            let entry = dep_map
+                .entry(coupling.target.clone())
+                .or_insert_with(|| (format!("{:?}", coupling.distance), HashMap::new()));
+            *entry
+                .1
+                .entry(format!("{:?}", coupling.strength))
+                .or_insert(0) += 1;
         }
 
         if coupling.target == module {
-            dependents.push(DependencyInfo {
-                module: coupling.source.clone(),
-                strength: format!("{:?}", coupling.strength),
-                distance: format!("{:?}", coupling.distance),
-            });
+            let entry = dependent_map
+                .entry(coupling.source.clone())
+                .or_insert_with(|| (format!("{:?}", coupling.distance), HashMap::new()));
+            *entry
+                .1
+                .entry(format!("{:?}", coupling.strength))
+                .or_insert(0) += 1;
+
             // Track max volatility of incoming couplings
             if coupling.volatility > volatility_max {
                 volatility_max = coupling.volatility;
             }
         }
     }
+
+    // Convert to DependencyInfo with grouped strengths
+    let dependencies: Vec<DependencyInfo> = dep_map
+        .into_iter()
+        .map(|(mod_name, (distance, strengths))| {
+            let total_count: usize = strengths.values().sum();
+            let mut strength_list: Vec<StrengthCount> = strengths
+                .into_iter()
+                .map(|(s, c)| StrengthCount {
+                    strength: s,
+                    count: c,
+                })
+                .collect();
+            // Sort by count descending
+            strength_list.sort_by(|a, b| b.count.cmp(&a.count));
+            DependencyInfo {
+                module: mod_name,
+                distance,
+                strengths: strength_list,
+                total_count,
+            }
+        })
+        .collect();
+
+    let dependents: Vec<DependencyInfo> = dependent_map
+        .into_iter()
+        .map(|(mod_name, (distance, strengths))| {
+            let total_count: usize = strengths.values().sum();
+            let mut strength_list: Vec<StrengthCount> = strengths
+                .into_iter()
+                .map(|(s, c)| StrengthCount {
+                    strength: s,
+                    count: c,
+                })
+                .collect();
+            strength_list.sort_by(|a, b| b.count.cmp(&a.count));
+            DependencyInfo {
+                module: mod_name,
+                distance,
+                strengths: strength_list,
+                total_count,
+            }
+        })
+        .collect();
 
     // Calculate second-order impact (what depends on our dependents)
     let mut second_order: HashSet<String> = HashSet::new();
@@ -416,6 +477,27 @@ fn find_module(metrics: &ProjectMetrics, name: &str) -> Option<String> {
     None
 }
 
+/// Format strength counts for display
+fn format_strengths(strengths: &[StrengthCount]) -> String {
+    if strengths.is_empty() {
+        return "unknown".to_string();
+    }
+    if strengths.len() == 1 && strengths[0].count == 1 {
+        return strengths[0].strength.clone();
+    }
+    strengths
+        .iter()
+        .map(|s| {
+            if s.count == 1 {
+                s.strength.clone()
+            } else {
+                format!("{}x {}", s.count, s.strength)
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(", ")
+}
+
 /// Generate impact analysis output
 pub fn generate_impact_output<W: Write>(
     metrics: &ProjectMetrics,
@@ -462,33 +544,43 @@ pub fn generate_impact_output<W: Write>(
 
     writeln!(writer)?;
 
-    // Dependencies
+    // Dependencies - count total couplings
+    let total_dep_couplings: usize = analysis.dependencies.iter().map(|d| d.total_count).sum();
     writeln!(
         writer,
-        "Direct Dependencies ({}):",
-        analysis.dependencies.len()
+        "Direct Dependencies ({} modules, {} couplings):",
+        analysis.dependencies.len(),
+        total_dep_couplings
     )?;
     if analysis.dependencies.is_empty() {
         writeln!(writer, "  (none)")?;
     } else {
         for dep in &analysis.dependencies {
+            let strengths_str = format_strengths(&dep.strengths);
             writeln!(
                 writer,
                 "  → {} ({}, {})",
-                dep.module, dep.strength, dep.distance
+                dep.module, strengths_str, dep.distance
             )?;
         }
     }
 
     writeln!(writer)?;
 
-    // Dependents
-    writeln!(writer, "Direct Dependents ({}):", analysis.dependents.len())?;
+    // Dependents - count total couplings
+    let total_dependent_couplings: usize = analysis.dependents.iter().map(|d| d.total_count).sum();
+    writeln!(
+        writer,
+        "Direct Dependents ({} modules, {} couplings):",
+        analysis.dependents.len(),
+        total_dependent_couplings
+    )?;
     if analysis.dependents.is_empty() {
         writeln!(writer, "  (none)")?;
     } else {
         for dep in &analysis.dependents {
-            writeln!(writer, "  ← {} ({})", dep.module, dep.strength)?;
+            let strengths_str = format_strengths(&dep.strengths);
+            writeln!(writer, "  ← {} ({})", dep.module, strengths_str)?;
         }
     }
 
