@@ -110,13 +110,14 @@ BALANCE = (STRENGTH XOR DISTANCE) OR NOT VOLATILITY
 
 | Grade | Description |
 |-------|-------------|
-| **A** | Well-balanced - coupling is appropriate |
+| **S** | Over-optimized! Stop refactoring! (WARNING) |
+| **A** | Well-balanced - coupling is appropriate (TARGET) |
 | **B** | Healthy - minor issues, manageable |
 | **C** | Room for improvement - some structural issues |
 | **D** | Attention needed - significant issues |
 | **F** | Immediate action required - critical issues |
 
-**Note**: Zero issues with sufficient couplings triggers an over-abstraction warning.
+**Note**: S is a WARNING, not a reward. Aim for A.
 
 ## Issue Types Detected
 

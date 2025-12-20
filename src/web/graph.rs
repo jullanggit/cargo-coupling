@@ -436,6 +436,11 @@ pub fn project_to_graph(metrics: &ProjectMetrics, thresholds: &IssueThresholds) 
         let source_id = normalize_to_node_id(&coupling.source);
         let target_id = normalize_to_node_id(&coupling.target);
 
+        // Skip self-loops (module referencing itself)
+        if source_id == target_id {
+            continue;
+        }
+
         let score = BalanceScore::calculate(coupling);
         let in_cycle = cycle_edges.contains(&(coupling.source.clone(), coupling.target.clone()));
 

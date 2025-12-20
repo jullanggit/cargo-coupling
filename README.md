@@ -451,13 +451,14 @@ Health grades are calculated based on internal couplings only (external crate de
 
 | Grade | Description | Criteria |
 |-------|-------------|----------|
-| **A (Well-balanced)** | Coupling is appropriate | No high issues, medium density <= 10% |
+| **S (Over-optimized!)** | Stop refactoring! | Medium density <= 5% with >= 20 couplings |
+| **A (Well-balanced)** | Coupling is appropriate | Medium density 5-10%, no high issues |
 | **B (Healthy)** | Minor issues, manageable | Medium density > 10%, no critical issues |
 | **C (Room for improvement)** | Some structural issues | Any high issues OR medium density > 25% |
 | **D (Attention needed)** | Significant issues | Any critical issues OR high density > 5% |
 | **F (Immediate action required)** | Critical issues | More than 3 critical issues |
 
-**Note**: If zero issues are detected with sufficient couplings, a warning is shown to verify the code isn't over-abstracted.
+**Note**: S is a WARNING, not a reward. It means you might be over-engineering. Aim for A.
 
 ### Severity Classification
 

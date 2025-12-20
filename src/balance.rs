@@ -900,6 +900,7 @@ fn capitalize_first(s: &str) -> String {
 /// Health grade for the overall project
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum HealthGrade {
+    S, // Over-optimized - stop! you're doing too much
     A, // Well-balanced - coupling is appropriate for the architecture
     B, // Healthy - minor issues exist but manageable
     C, // Room for improvement - some structural issues
@@ -907,27 +908,10 @@ pub enum HealthGrade {
     F, // Immediate action required - critical issues blocking development
 }
 
-impl HealthGrade {
-    /// Returns true if this grade indicates possibly over-engineered code
-    /// (zero issues with sufficient couplings to assess)
-    pub fn is_possibly_over_engineered(
-        &self,
-        critical: usize,
-        high: usize,
-        medium: usize,
-        internal_couplings: usize,
-    ) -> bool {
-        matches!(self, HealthGrade::A)
-            && critical == 0
-            && high == 0
-            && medium == 0
-            && internal_couplings >= 20
-    }
-}
-
 impl std::fmt::Display for HealthGrade {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
+            HealthGrade::S => write!(f, "S (Over-optimized! Stop refactoring!)"),
             HealthGrade::A => write!(f, "A (Well-balanced)"),
             HealthGrade::B => write!(f, "B (Healthy)"),
             HealthGrade::C => write!(f, "C (Room for improvement)"),
@@ -983,8 +967,14 @@ fn calculate_health_grade(
         return HealthGrade::B;
     }
 
-    // A: Well-balanced - no high issues AND low medium issues (<= 10%)
-    // This is the top grade - no need to go higher
+    // S: Over-optimized! Too few issues (< 5%) = you're probably over-engineering
+    // This is a WARNING, not a reward. Stop refactoring!
+    if high == 0 && medium_density <= 0.05 && internal_couplings >= 20 {
+        return HealthGrade::S;
+    }
+
+    // A: Well-balanced - no high issues AND reasonable medium issues (5-10%)
+    // This is the ideal target grade
     if high == 0 && medium_density <= 0.10 && internal_couplings >= 10 {
         return HealthGrade::A;
     }
@@ -1251,8 +1241,10 @@ mod tests {
     fn test_health_grade_calculation() {
         let mut issues = HashMap::new();
 
-        // No issues with enough couplings = A (good, top grade)
-        assert_eq!(calculate_health_grade(&issues, 100), HealthGrade::A);
+        // No issues with >= 20 couplings = S (over-optimized warning)
+        assert_eq!(calculate_health_grade(&issues, 100), HealthGrade::S);
+
+        // No issues with 10-19 couplings = A (well-balanced)
         assert_eq!(calculate_health_grade(&issues, 15), HealthGrade::A);
 
         // No internal couplings = B (can't assess without data)
