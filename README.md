@@ -82,7 +82,9 @@ Issues:
 
 The AI will analyze patterns and suggest specific refactoring strategies.
 
-### 4. Interactive Web Visualization
+### 4. Interactive Web Visualization (Experimental)
+
+> ⚠️ **Experimental Feature**: The Web UI is currently in an experimental state. The interface, features, and behavior may change significantly in future versions.
 
 ```bash
 # Start interactive web UI

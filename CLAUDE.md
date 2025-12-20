@@ -58,7 +58,9 @@ cargo run -- coupling --json ./src
 cargo run -- coupling --json ./src | jq '.hotspots[0]'
 ```
 
-### Web Visualization
+### Web Visualization (Experimental)
+
+> ⚠️ Web UI is experimental. Interface and features may change.
 
 ```bash
 # Start interactive web UI
