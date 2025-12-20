@@ -478,11 +478,10 @@ Balanced Coupling Analysis: my-project
 
 Grade: B (Good) | Score: 0.67/1.00 | Modules: 14
 
-┌─ 3-Dimensional Analysis ──────────────────────────────────┐
-│ Strength  : Contract 1%, Model 24%, Functional 66%, Intrusive 8%
-│ Distance  : Same Module 6%, Different Module 2%, External 91%
-│ Volatility: Low 2%, Medium 98%, High 0%
-└────────────────────────────────────────────────────────────┘
+3-Dimensional Analysis:
+  Strength:   Contract 1% / Model 24% / Functional 66% / Intrusive 8%
+  Distance:   Same 6% / Different 2% / External 91%
+  Volatility: Low 2% / Medium 98% / High 0%
 
 Balance State:
   ✅ High Cohesion (strong+close): 24 (6%)
@@ -507,27 +506,26 @@ $ cargo coupling --summary --jp ./src
 
 評価: B (Good) | スコア: 0.67/1.00 | モジュール数: 14
 
-┌─ 3次元分析 ────────────────────────────────────────────────┐
-│ 【結合強度】どれだけ密に依存しているか
-│   Contract(トレイト) 1%, Model(型) 24%, Functional(関数) 66%, Intrusive(内部) 8%
-│ 【距離】モジュール間の距離
-│   同一モジュール 6%, 別モジュール 2%, 外部クレート 91%
-│ 【変更頻度】Git履歴からの変更回数
-│   低(安定) 2%, 中 98%, 高(頻繁に変更) 0%
-└────────────────────────────────────────────────────────────┘
+3次元分析:
+  結合強度: Contract 1% / Model 24% / Functional 66% / Intrusive 8%
+           (トレイト)   (型)      (関数)        (内部アクセス)
+  距離:     同一モジュール 6% / 別モジュール 2% / 外部 91%
+  変更頻度: 低 2% / 中 98% / 高 0%
+
+バランス状態:
+  ✅ 高凝集 (強い結合 + 近い距離): 24 (6%) ← 理想的
+  ✅ 疎結合 (弱い結合 + 遠い距離): 5 (1%) ← 理想的
+  🤔 許容可能 (強い結合 + 遠い距離 + 安定): 352 (92%)
 
 優先的に対処すべき問題:
   - 神モジュール (責務が多すぎる) | metrics
     → モジュールを分割: metrics_core, metrics_helpers
 
-┌─ 設計判断マトリクス ──────────────────────────────────────┐
-│ 結合強度 │  距離  │ 変更頻度 │ 判定           │
-├──────────┼────────┼──────────┼────────────────┤
-│ 強い     │ 近い   │ 任意     │ ✅ 高凝集      │
-│ 弱い     │ 遠い   │ 任意     │ ✅ 疎結合      │
-│ 強い     │ 遠い   │ 低い     │ 🤔 許容可能    │
-│ 強い     │ 遠い   │ 高い     │ ❌ 要リファクタ │
-└──────────┴────────┴──────────┴────────────────┘
+設計判断ガイド (Khononov):
+  ✅ 強い結合 + 近い距離 → 高凝集 (理想的)
+  ✅ 弱い結合 + 遠い距離 → 疎結合 (理想的)
+  🤔 強い結合 + 遠い距離 + 安定 → 許容可能
+  ❌ 強い結合 + 遠い距離 + 頻繁に変更 → 要リファクタリング
 ```
 
 ### Coupling Distribution

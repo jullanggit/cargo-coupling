@@ -50,63 +50,31 @@ pub fn generate_summary_with_thresholds<W: Write>(
 
     // 3-Dimensional Analysis
     if !metrics.couplings.is_empty() {
-        if jp {
-            writeln!(writer, "┌─ 3次元分析 ────────────────────────────────────────────────┐")?;
-            writeln!(writer, "│ 【結合強度】どれだけ密に依存しているか")?;
-        } else {
-            writeln!(writer, "┌─ 3-Dimensional Analysis ──────────────────────────────────┐")?;
-        }
-
         // Strength distribution
         let (intr_pct, func_pct, model_pct, contract_pct) = dimension_stats.strength_percentages();
-        if jp {
-            writeln!(
-                writer,
-                "│   Contract(トレイト) {:.0}%, Model(型) {:.0}%, Functional(関数) {:.0}%, Intrusive(内部) {:.0}%",
-                contract_pct, model_pct, func_pct, intr_pct
-            )?;
-            writeln!(writer, "│ 【距離】モジュール間の距離")?;
-        } else {
-            writeln!(
-                writer,
-                "│ Strength  : Contract {:.0}%, Model {:.0}%, Functional {:.0}%, Intrusive {:.0}%",
-                contract_pct, model_pct, func_pct, intr_pct
-            )?;
-        }
-
         // Distance distribution
         let (same_pct, diff_pct, ext_pct) = dimension_stats.distance_percentages();
-        if jp {
-            writeln!(
-                writer,
-                "│   同一モジュール {:.0}%, 別モジュール {:.0}%, 外部クレート {:.0}%",
-                same_pct, diff_pct, ext_pct
-            )?;
-            writeln!(writer, "│ 【変更頻度】Git履歴からの変更回数")?;
-        } else {
-            writeln!(
-                writer,
-                "│ Distance  : Same Module {:.0}%, Different Module {:.0}%, External {:.0}%",
-                same_pct, diff_pct, ext_pct
-            )?;
-        }
-
         // Volatility distribution
         let (low_pct, med_pct, high_pct) = dimension_stats.volatility_percentages();
+
         if jp {
-            writeln!(
-                writer,
-                "│   低(安定) {:.0}%, 中 {:.0}%, 高(頻繁に変更) {:.0}%",
-                low_pct, med_pct, high_pct
-            )?;
+            writeln!(writer, "3次元分析:")?;
+            writeln!(writer, "  結合強度: Contract {:.0}% / Model {:.0}% / Functional {:.0}% / Intrusive {:.0}%",
+                contract_pct, model_pct, func_pct, intr_pct)?;
+            writeln!(writer, "           (トレイト)   (型)      (関数)        (内部アクセス)")?;
+            writeln!(writer, "  距離:     同一モジュール {:.0}% / 別モジュール {:.0}% / 外部 {:.0}%",
+                same_pct, diff_pct, ext_pct)?;
+            writeln!(writer, "  変更頻度: 低 {:.0}% / 中 {:.0}% / 高 {:.0}%",
+                low_pct, med_pct, high_pct)?;
         } else {
-            writeln!(
-                writer,
-                "│ Volatility: Low {:.0}%, Medium {:.0}%, High {:.0}%",
-                low_pct, med_pct, high_pct
-            )?;
+            writeln!(writer, "3-Dimensional Analysis:")?;
+            writeln!(writer, "  Strength:   Contract {:.0}% / Model {:.0}% / Functional {:.0}% / Intrusive {:.0}%",
+                contract_pct, model_pct, func_pct, intr_pct)?;
+            writeln!(writer, "  Distance:   Same {:.0}% / Different {:.0}% / External {:.0}%",
+                same_pct, diff_pct, ext_pct)?;
+            writeln!(writer, "  Volatility: Low {:.0}% / Medium {:.0}% / High {:.0}%",
+                low_pct, med_pct, high_pct)?;
         }
-        writeln!(writer, "└────────────────────────────────────────────────────────────┘")?;
         writeln!(writer)?;
 
         // Balance Classification
@@ -339,17 +307,14 @@ pub fn generate_summary_with_thresholds<W: Write>(
         }
     }
 
-    // Design decision matrix (Japanese only, for educational purposes)
+    // Design decision guide (Japanese only, for educational purposes)
     if jp {
         writeln!(writer)?;
-        writeln!(writer, "┌─ 設計判断マトリクス ──────────────────────────────────────┐")?;
-        writeln!(writer, "│ 結合強度 │  距離  │ 変更頻度 │ 判定           │")?;
-        writeln!(writer, "├──────────┼────────┼──────────┼────────────────┤")?;
-        writeln!(writer, "│ 強い     │ 近い   │ 任意     │ ✅ 高凝集      │")?;
-        writeln!(writer, "│ 弱い     │ 遠い   │ 任意     │ ✅ 疎結合      │")?;
-        writeln!(writer, "│ 強い     │ 遠い   │ 低い     │ 🤔 許容可能    │")?;
-        writeln!(writer, "│ 強い     │ 遠い   │ 高い     │ ❌ 要リファクタ │")?;
-        writeln!(writer, "└──────────┴────────┴──────────┴────────────────┘")?;
+        writeln!(writer, "設計判断ガイド (Khononov):")?;
+        writeln!(writer, "  ✅ 強い結合 + 近い距離 → 高凝集 (理想的)")?;
+        writeln!(writer, "  ✅ 弱い結合 + 遠い距離 → 疎結合 (理想的)")?;
+        writeln!(writer, "  🤔 強い結合 + 遠い距離 + 安定 → 許容可能")?;
+        writeln!(writer, "  ❌ 強い結合 + 遠い距離 + 頻繁に変更 → 要リファクタリング")?;
     }
 
     Ok(())
