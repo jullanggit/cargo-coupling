@@ -75,6 +75,69 @@ Issues:
 
 The AI will analyze patterns and suggest specific refactoring strategies.
 
+### 4. Interactive Web Visualization
+
+```bash
+# Start interactive web UI
+cargo coupling --web ./src
+
+# Custom port
+cargo coupling --web --port 8080 ./src
+```
+
+The web UI provides:
+- Interactive graph visualization with Cytoscape.js
+- **Hotspots panel**: Top refactoring targets ranked by severity
+- **Blast Radius**: Impact analysis with risk score
+- **Clusters**: Architecture grouping detection
+- Filtering by strength, distance, volatility, balance score
+- Source code viewing with syntax highlighting
+
+### 5. Job-Focused CLI Commands
+
+For quick, focused analysis without opening the web UI:
+
+```bash
+# Find top refactoring targets
+cargo coupling --hotspots ./src
+cargo coupling --hotspots=10 ./src
+
+# With beginner-friendly explanations
+cargo coupling --hotspots --verbose ./src
+
+# Analyze change impact for a specific module
+cargo coupling --impact main ./src
+cargo coupling --impact analyzer ./src
+
+# CI/CD quality gate (exits with code 1 on failure)
+cargo coupling --check ./src
+cargo coupling --check --min-grade=B ./src
+cargo coupling --check --max-critical=0 --max-circular=0 ./src
+
+# Machine-readable JSON output
+cargo coupling --json ./src
+cargo coupling --json ./src | jq '.hotspots[0]'
+```
+
+Example `--hotspots --verbose` output:
+
+```
+#1 my-project::main (Score: 55)
+   🟡 Medium: High Efferent Coupling
+
+   💡 What it means:
+      This module depends on too many other modules
+
+   ⚠️  Why it's a problem:
+      • Changes elsewhere may break this module
+      • Testing requires many mocks/stubs
+      • Hard to understand in isolation
+
+   🔧 How to fix:
+      Split into smaller modules with clear responsibilities
+      e.g., Split main.rs into cli.rs, config.rs, runner.rs
+```
+
 ### More Options
 
 ```bash
@@ -95,6 +158,10 @@ cargo coupling --no-git ./src
 
 - **5-Dimensional Analysis**: Measures Integration Strength, Distance, Volatility, Connascence, and Temporal Coupling
 - **Balance Score**: Calculates overall coupling balance (0.0 - 1.0)
+- **Interactive Web UI**: `--web` flag starts a browser-based visualization with graph, hotspots, and blast radius analysis
+- **Job-Focused CLI**: Quick commands for common tasks (`--hotspots`, `--impact`, `--check`, `--json`)
+- **Beginner-Friendly**: `--verbose` flag explains issues in plain language with fix examples
+- **CI/CD Quality Gate**: `--check` command with configurable thresholds and exit codes
 - **AI-Friendly Output**: `--ai` flag generates output optimized for coding agents (Claude, Copilot, etc.)
 - **APOSD Metrics**: Detects shallow modules, pass-through methods, and high cognitive load (inspired by "A Philosophy of Software Design")
 - **Connascence Detection**: Identifies coupling types (Name, Type, Position, Algorithm)
@@ -333,11 +400,27 @@ Options:
       --ai                      AI-friendly output for coding agents
       --git-months <MONTHS>     Git history period [default: 6]
       --no-git                  Skip Git analysis
-  -v, --verbose                 Verbose output
+  -v, --verbose                 Verbose output with explanations
       --timing                  Show timing information
   -j, --jobs <N>                Number of threads (default: auto)
       --max-deps <N>            Max outgoing dependencies [default: 20]
       --max-dependents <N>      Max incoming dependencies [default: 30]
+
+Web Visualization:
+      --web                     Start interactive web UI
+      --port <PORT>             Web server port [default: 3000]
+      --no-open                 Don't auto-open browser
+
+Job-Focused Commands:
+      --hotspots[=<N>]          Show top N refactoring targets [default: 5]
+      --impact <MODULE>         Analyze change impact for a module
+      --check                   CI/CD quality gate (exit code 1 on failure)
+      --min-grade <GRADE>       Minimum grade for --check (A/B/C/D/F)
+      --max-critical <N>        Max critical issues for --check
+      --max-circular <N>        Max circular dependencies for --check
+      --fail-on <SEVERITY>      Fail --check on severity (critical/high/medium/low)
+      --json                    Output in JSON format
+
   -h, --help                    Print help
   -V, --version                 Print version
 ```
@@ -620,9 +703,8 @@ jobs:
       - name: Run coupling analysis
         run: cargo coupling --summary --timing ./src
 
-      - name: Check for critical issues
-        run: |
-          cargo coupling --summary ./src 2>&1 | grep -q "Critical:" && exit 1 || exit 0
+      - name: Quality gate check
+        run: cargo coupling --check --min-grade=C --max-circular=0 ./src
 
       - name: Generate report
         run: cargo coupling -o coupling-report.md ./src
@@ -633,6 +715,31 @@ jobs:
           name: coupling-report
           path: coupling-report.md
 ```
+
+### Quality Gate Options
+
+The `--check` command provides flexible quality gate configuration:
+
+```bash
+# Fail if grade is below C
+cargo coupling --check --min-grade=C ./src
+
+# Fail if there are any circular dependencies
+cargo coupling --check --max-circular=0 ./src
+
+# Fail if there are any critical issues
+cargo coupling --check --max-critical=0 ./src
+
+# Fail on any high severity or above
+cargo coupling --check --fail-on=high ./src
+
+# Combine multiple conditions
+cargo coupling --check --min-grade=B --max-circular=0 --max-critical=0 ./src
+```
+
+Exit codes:
+- `0`: All checks passed
+- `1`: One or more checks failed
 
 ## Best Practices
 
