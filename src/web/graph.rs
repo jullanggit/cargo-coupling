@@ -221,10 +221,10 @@ pub fn project_to_graph(metrics: &ProjectMetrics, thresholds: &IssueThresholds) 
         }
 
         // Also try the first part which might be the module name
-        if let Some(first) = parts.first() {
-            if module_short_names.contains(*first) {
-                return (*first).to_string();
-            }
+        if let Some(first) = parts.first()
+            && module_short_names.contains(*first)
+        {
+            return (*first).to_string();
         }
 
         // Keep full path for external crates

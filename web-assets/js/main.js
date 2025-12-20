@@ -250,12 +250,24 @@ function populateTreeView() {
     const container = document.getElementById('tree-view');
     if (!container || !state.graphData) return;
 
-    // Group by crate
+    // Filter out external nodes
+    const internalNodes = state.graphData.nodes.filter(node => {
+        const filePath = node.file_path;
+        return filePath && !filePath.startsWith('[external]');
+    });
+
+    // Group by crate/directory
     const crates = {};
-    state.graphData.nodes.forEach(node => {
-        const crate = node.id.split('::')[0] || 'root';
+    internalNodes.forEach(node => {
+        // Use 'internal' as the group name for all internal modules
+        const crate = 'internal';
         if (!crates[crate]) crates[crate] = [];
         crates[crate].push(node);
+    });
+
+    // Sort modules alphabetically within each group
+    Object.values(crates).forEach(nodes => {
+        nodes.sort((a, b) => a.label.localeCompare(b.label));
     });
 
     container.innerHTML = Object.entries(crates).map(([crate, nodes]) => `

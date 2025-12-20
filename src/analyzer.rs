@@ -1066,8 +1066,8 @@ pub fn analyze_project_parallel(path: &Path) -> Result<ProjectMetrics, AnalyzerE
             // Determine if this is an internal coupling
             let target_module = extract_target_module(&dep.path);
 
-            // Skip if target module looks invalid
-            if !is_valid_dependency_path(&target_module) {
+            // Skip if target module looks invalid (but allow known module names)
+            if !module_names.contains(&target_module) && !is_valid_dependency_path(&target_module) {
                 continue;
             }
 
@@ -1215,6 +1215,12 @@ fn analyze_with_workspace(
 
     project.total_files = analyzed_files.len();
 
+    // Build set of known module names for validation
+    let module_names: HashSet<String> = analyzed_files
+        .iter()
+        .map(|a| a.module_name.clone())
+        .collect();
+
     // Second pass: build coupling relationships with workspace context
     for analyzed in &analyzed_files {
         // Clone metrics and add item_dependencies
@@ -1234,8 +1240,8 @@ fn analyze_with_workspace(
 
             let target_module = extract_target_module(&dep.path);
 
-            // Skip if target module looks invalid
-            if !is_valid_dependency_path(&target_module) {
+            // Skip if target module looks invalid (but allow known module names)
+            if !module_names.contains(&target_module) && !is_valid_dependency_path(&target_module) {
                 continue;
             }
 
