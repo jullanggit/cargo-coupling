@@ -140,6 +140,8 @@ pub fn generate_summary_with_thresholds<W: Write>(
             writeln!(writer, "  ⚪ Low: {}", low)?;
         }
         writeln!(writer)?;
+    } else if thresholds.strict_mode {
+        writeln!(writer, "Detected Issues: None (use --all to see Low severity)\n")?;
     }
 
     // Top priority if any

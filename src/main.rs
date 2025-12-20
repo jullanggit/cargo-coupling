@@ -119,6 +119,10 @@ struct Args {
     #[arg(long, value_name = "MODULE")]
     impact: Option<String>,
 
+    /// Trace dependencies for a specific function/type (e.g., "analyze_file" or "BalanceScore")
+    #[arg(long, value_name = "ITEM")]
+    trace: Option<String>,
+
     /// Run quality gate check (returns non-zero exit code on failure)
     #[arg(long)]
     check: bool,
@@ -142,6 +146,10 @@ struct Args {
     /// Output in JSON format (machine-readable)
     #[arg(long)]
     json: bool,
+
+    /// Show all issues including Low severity (default: only Medium/High/Critical)
+    #[arg(long)]
+    all: bool,
 }
 
 fn main() {
@@ -274,6 +282,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
         max_dependents: args
             .max_dependents
             .unwrap_or(config.thresholds.max_dependents),
+        strict_mode: !args.all, // Default is strict (hide Low), --all shows everything
         ..IssueThresholds::default()
     };
 
@@ -340,6 +349,16 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     // --impact: Analyze impact of a specific module
     if let Some(module_name) = &args.impact {
         let found = generate_impact_output(&metrics, module_name, &mut writer)?;
+        if !found {
+            process::exit(1);
+        }
+        return Ok(());
+    }
+
+    // --trace: Trace dependencies for a specific function/type
+    if let Some(item_name) = &args.trace {
+        let found =
+            cargo_coupling::cli_output::generate_trace_output(&metrics, item_name, &mut writer)?;
         if !found {
             process::exit(1);
         }

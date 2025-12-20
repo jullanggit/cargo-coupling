@@ -383,6 +383,8 @@ pub struct IssueThresholds {
     pub max_impls: usize,
     /// Minimum primitive parameter count for Primitive Obsession
     pub min_primitive_params: usize,
+    /// Strict mode: only show Medium/High/Critical issues
+    pub strict_mode: bool,
 }
 
 impl Default for IssueThresholds {
@@ -397,6 +399,7 @@ impl Default for IssueThresholds {
             max_types: 15,         // More than 15 types = God Module
             max_impls: 20,         // More than 20 implementations = God Module
             min_primitive_params: 3, // 3+ primitive params = Primitive Obsession
+            strict_mode: true,     // Show only important issues by default
         }
     }
 }
@@ -629,6 +632,11 @@ pub fn analyze_project_balance_with_thresholds(
     // Analyze Khononov/Rust-specific issues
     let rust_issues = analyze_rust_patterns(metrics, &thresholds);
     all_issues.extend(rust_issues);
+
+    // Strict mode: filter out Low severity issues to reduce noise
+    if thresholds.strict_mode {
+        all_issues.retain(|issue| issue.severity >= Severity::Medium);
+    }
 
     // Sort by severity (critical first), then by balance score (worst first)
     all_issues.sort_by(|a, b| {
