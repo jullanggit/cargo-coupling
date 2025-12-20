@@ -101,6 +101,12 @@
                             Re-layout graph with selected node at center
                         </p>
                     </div>
+                    <div class="filter-group" style="margin-top: 0.5rem;">
+                        <label><input type="checkbox" id="show-items-toggle"> Show Items (fn/type)</label>
+                        <p style="font-size: 0.6875rem; color: var(--text-secondary); margin-top: 0.25rem;">
+                            Show function and type nodes in graph
+                        </p>
+                    </div>
                 </section>
 
                 <!-- Layout (for Graph view) -->
@@ -158,6 +164,7 @@
                     <div class="filter-group">
                         <label><input type="checkbox" id="show-issues-only"> Show Issues Only</label>
                         <label><input type="checkbox" id="show-cycles-only"> Show Cycles Only</label>
+                        <label><input type="checkbox" id="hide-external" checked> Hide External Crates</label>
                     </div>
 
                     <div class="filter-actions">
@@ -326,6 +333,7 @@
                         <span class="legend-item"><span class="dot trait"></span> trait</span>
                         <span class="legend-item" style="margin-left: auto;"><span id="item-count">0</span> items</span>
                     </div>
+                    <div id="item-details" class="item-details"></div>
                 </section>
 
                 <!-- Legend -->

@@ -18,7 +18,8 @@ export const state = {
     centerMode: false,  // true = re-layout on click, false = zoom only
     currentLang: 'en',  // 'en' or 'ja'
     itemCy: null,
-    currentModuleForItemGraph: null
+    currentModuleForItemGraph: null,
+    showItems: false  // Show item-level nodes (functions, types)
 };
 
 // Setters for state (to maintain encapsulation where needed)
@@ -56,4 +57,8 @@ export function setItemCy(instance) {
 
 export function setCurrentModuleForItemGraph(moduleId) {
     state.currentModuleForItemGraph = moduleId;
+}
+
+export function setShowItems(show) {
+    state.showItems = show;
 }

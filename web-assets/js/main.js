@@ -2,9 +2,9 @@
 // cargo-coupling Web Visualization - Main Entry Point
 // =====================================================
 
-import { CONFIG, state, setGraphData, setSelectedNode } from './state.js';
+import { CONFIG, state, setGraphData, setSelectedNode, setShowItems, setCy } from './state.js';
 import { setupLanguageToggle, updateUILanguage } from './i18n.js';
-import { initCytoscape, applyLayout, centerOnNode, focusOnNode, highlightNeighbors, highlightDependencyPath, clearHighlights } from './graph.js';
+import { initCytoscape, buildElements, getCytoscapeStyle, getLayoutConfig, applyLayout, centerOnNode, focusOnNode, highlightNeighbors, highlightDependencyPath, clearHighlights } from './graph.js';
 import {
     updateHeaderStats,
     updateFooterStats,
@@ -52,6 +52,12 @@ async function init() {
         initUI(data);
         initJobFeatures();
 
+        // Show sidebar on load
+        const sidebar = document.getElementById('sidebar');
+        if (sidebar) {
+            sidebar.classList.add('visible');
+        }
+
     } catch (error) {
         console.error('Failed to initialize:', error);
         document.getElementById('cy').innerHTML =
@@ -59,7 +65,7 @@ async function init() {
     }
 }
 
-function initGraph(data) {
+function initGraph(data, options = {}) {
     initCytoscape(
         data,
         // Node tap handler
@@ -70,8 +76,39 @@ function initGraph(data) {
             showEdgeDetails(edge.data());
         },
         // Background tap handler
-        () => clearSelection()
+        () => clearSelection(),
+        // Options
+        options
     );
+}
+
+/**
+ * Rebuild graph with new options (e.g., toggle items)
+ */
+function rebuildGraph() {
+    if (!state.graphData || !state.cy) return;
+
+    const elements = buildElements(state.graphData, { showItems: state.showItems });
+
+    // Remove existing elements and add new ones
+    state.cy.elements().remove();
+    state.cy.add(elements);
+
+    // Re-run layout
+    state.cy.layout(getLayoutConfig(state.currentLayout)).run();
+}
+
+/**
+ * Setup item view toggle
+ */
+function setupItemToggle() {
+    const toggle = document.getElementById('show-items-toggle');
+    if (toggle) {
+        toggle.addEventListener('change', (e) => {
+            setShowItems(e.target.checked);
+            rebuildGraph();
+        });
+    }
 }
 
 function initUI(data) {
@@ -100,6 +137,7 @@ function initUI(data) {
     setupViewToggle();
     setupLegendToggle();
     setupCenterModeToggle();
+    setupItemToggle();
 
     // Set up callback for feature module
     setSelectNodeCallback((node) => selectNode(node));

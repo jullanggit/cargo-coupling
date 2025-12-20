@@ -8,8 +8,8 @@ import { STABLE_CRATES, isExternalCrate, estimateVolatility } from './utils.js';
 /**
  * Initialize Cytoscape graph with data
  */
-export function initCytoscape(data, onNodeTap, onEdgeTap, onBackgroundTap) {
-    const elements = buildElements(data);
+export function initCytoscape(data, onNodeTap, onEdgeTap, onBackgroundTap, options = {}) {
+    const elements = buildElements(data, options);
 
     const cy = cytoscape({
         container: document.getElementById('cy'),
@@ -29,9 +29,17 @@ export function initCytoscape(data, onNodeTap, onEdgeTap, onBackgroundTap) {
 
 /**
  * Build Cytoscape elements from graph data
+ * @param {Object} data - Graph data from API
+ * @param {Object} options - Build options
+ * @param {boolean} options.showItems - Include item-level nodes (functions, types)
  */
-export function buildElements(data) {
-    const nodes = data.nodes.map(node => {
+export function buildElements(data, options = {}) {
+    const { showItems = false } = options;
+    const nodes = [];
+    const itemNodeIds = new Set();
+
+    // Build module nodes
+    data.nodes.forEach(node => {
         const crate = node.id.split('::')[0];
         const items = node.items || [];
 
@@ -42,11 +50,12 @@ export function buildElements(data) {
 
         const statsStr = `${fnCount}fn ${typeCount}ty ${implCount}impl`;
 
-        return {
+        nodes.push({
             data: {
                 id: node.id,
                 label: node.label,
                 crate: crate,
+                nodeType: 'module',
                 ...node.metrics,
                 file_path: node.file_path,
                 in_cycle: node.in_cycle,
@@ -56,7 +65,26 @@ export function buildElements(data) {
                 impl_count: implCount,
                 stats_label: statsStr
             }
-        };
+        });
+
+        // Add item nodes if enabled
+        if (showItems && items.length > 0) {
+            items.forEach(item => {
+                const itemId = `${node.id}::${item.name}`;
+                itemNodeIds.add(itemId);
+                nodes.push({
+                    data: {
+                        id: itemId,
+                        label: item.name,
+                        nodeType: 'item',
+                        itemKind: item.kind,
+                        visibility: item.visibility,
+                        parentModule: node.id,
+                        depCount: (item.dependencies || []).length
+                    }
+                });
+            });
+        }
     });
 
     // Aggregate edges between same source-target pairs
@@ -101,6 +129,7 @@ export function buildElements(data) {
             id: `e${idx}`,
             source: data.source,
             target: data.target,
+            edgeType: 'module',
             strength: data.strength,
             strengthLabel: data.strengthLabel,
             distance: data.distance,
@@ -116,6 +145,65 @@ export function buildElements(data) {
         }
     }));
 
+    // Add item-level edges if enabled
+    if (showItems) {
+        let itemEdgeIdx = 0;
+
+        // Add parent edges (item -> module)
+        data.nodes.forEach(node => {
+            (node.items || []).forEach(item => {
+                const itemId = `${node.id}::${item.name}`;
+                edges.push({
+                    data: {
+                        id: `ie-parent-${itemEdgeIdx++}`,
+                        source: itemId,
+                        target: node.id,
+                        edgeType: 'parent',
+                        strengthLabel: 'Parent'
+                    }
+                });
+
+                // Add item dependency edges
+                (item.dependencies || []).forEach(dep => {
+                    // Find target - could be in same module or different module
+                    const targetName = dep.target.split('::').pop();
+                    let targetId = null;
+
+                    // Check if target is an item in our graph
+                    for (const n of data.nodes) {
+                        const matchingItem = (n.items || []).find(i => i.name === targetName);
+                        if (matchingItem) {
+                            targetId = `${n.id}::${matchingItem.name}`;
+                            break;
+                        }
+                    }
+
+                    // If not found as item, try as module
+                    if (!targetId) {
+                        const moduleMatch = data.nodes.find(n => n.id === targetName || n.label === targetName);
+                        if (moduleMatch) {
+                            targetId = moduleMatch.id;
+                        }
+                    }
+
+                    if (targetId && targetId !== itemId) {
+                        edges.push({
+                            data: {
+                                id: `ie-dep-${itemEdgeIdx++}`,
+                                source: itemId,
+                                target: targetId,
+                                edgeType: 'item-dep',
+                                depType: dep.dep_type,
+                                strengthLabel: dep.strength || 'Model',
+                                distance: dep.distance || 'SameModule'
+                            }
+                        });
+                    }
+                });
+            });
+        });
+    }
+
     return [...nodes, ...edges];
 }
 
@@ -124,9 +212,9 @@ export function buildElements(data) {
  */
 export function getCytoscapeStyle() {
     return [
-        // Node styles
+        // Module node styles
         {
-            selector: 'node',
+            selector: 'node[nodeType="module"]',
             style: {
                 'label': node => {
                     const label = node.data('label') || '';
@@ -148,7 +236,50 @@ export function getCytoscapeStyle() {
                 'text-outline-color': '#0f172a',
                 'text-outline-width': 2,
                 'width': node => 40 + (node.data('couplings_out') || 0) * 2,
-                'height': node => 40 + (node.data('couplings_out') || 0) * 2
+                'height': node => 40 + (node.data('couplings_out') || 0) * 2,
+                'shape': 'roundrectangle'
+            }
+        },
+        // Item node styles (functions, types, traits)
+        {
+            selector: 'node[nodeType="item"]',
+            style: {
+                'label': 'data(label)',
+                'text-valign': 'center',
+                'text-halign': 'center',
+                'font-size': '7px',
+                'color': '#f8fafc',
+                'text-outline-color': '#0f172a',
+                'text-outline-width': 1,
+                'width': 20,
+                'height': 20,
+                'shape': 'ellipse',
+                'background-color': node => {
+                    const kind = node.data('itemKind');
+                    if (kind === 'fn') return '#3b82f6';
+                    if (kind === 'trait') return '#22c55e';
+                    return '#8b5cf6';
+                },
+                'border-width': node => node.data('visibility') === 'pub' ? 2 : 1,
+                'border-color': node => node.data('visibility') === 'pub' ? '#fbbf24' : '#475569'
+            }
+        },
+        // Fallback for nodes without nodeType
+        {
+            selector: 'node:not([nodeType])',
+            style: {
+                'label': 'data(label)',
+                'text-valign': 'center',
+                'text-halign': 'center',
+                'background-color': '#64748b',
+                'border-width': 2,
+                'border-color': '#475569',
+                'color': '#f8fafc',
+                'font-size': '9px',
+                'text-outline-color': '#0f172a',
+                'text-outline-width': 2,
+                'width': 40,
+                'height': 40
             }
         },
         // Edge styles - base
@@ -200,6 +331,41 @@ export function getCytoscapeStyle() {
                 'target-arrow-color': '#dc2626',
                 'width': 3,
                 'line-style': 'solid'
+            }
+        },
+        // Parent edges (item -> module)
+        {
+            selector: 'edge[edgeType="parent"]',
+            style: {
+                'line-color': '#64748b',
+                'target-arrow-color': '#64748b',
+                'width': 1,
+                'opacity': 0.3,
+                'line-style': 'dotted',
+                'target-arrow-shape': 'none'
+            }
+        },
+        // Item dependency edges
+        {
+            selector: 'edge[edgeType="item-dep"]',
+            style: {
+                'width': 1.5,
+                'opacity': 0.6,
+                'line-color': edge => {
+                    const strength = edge.data('strengthLabel');
+                    if (strength === 'Intrusive') return '#ef4444';
+                    if (strength === 'Functional') return '#f97316';
+                    return '#6b7280';
+                },
+                'target-arrow-color': edge => {
+                    const strength = edge.data('strengthLabel');
+                    if (strength === 'Intrusive') return '#ef4444';
+                    if (strength === 'Functional') return '#f97316';
+                    return '#6b7280';
+                },
+                'target-arrow-shape': 'triangle',
+                'arrow-scale': 0.8,
+                'curve-style': 'bezier'
             }
         },
         // Highlighted state

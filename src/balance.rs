@@ -900,8 +900,9 @@ fn capitalize_first(s: &str) -> String {
 /// Health grade for the overall project
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum HealthGrade {
-    A, // Excellent
-    B, // Good
+    S, // Exceptional - possibly over-engineered
+    A, // Excellent - no change needed
+    B, // Good (standard)
     C, // Acceptable
     D, // Needs Improvement
     F, // Critical Issues
@@ -910,7 +911,8 @@ pub enum HealthGrade {
 impl std::fmt::Display for HealthGrade {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            HealthGrade::A => write!(f, "A (Excellent)"),
+            HealthGrade::S => write!(f, "S (Exceptional - possibly over-engineered)"),
+            HealthGrade::A => write!(f, "A (Excellent - no change needed)"),
             HealthGrade::B => write!(f, "B (Good)"),
             HealthGrade::C => write!(f, "C (Acceptable)"),
             HealthGrade::D => write!(f, "D (Needs Improvement)"),
@@ -965,8 +967,14 @@ fn calculate_health_grade(
         return HealthGrade::B;
     }
 
-    // A: Excellent - no high issues AND very low medium issues (< 5%)
-    // Reserved for exceptionally well-designed code
+    // S: Exceptional - zero issues at all, might indicate over-engineering
+    // Only for projects with enough couplings to assess (>= 20)
+    // This is RARE - most real projects have some issues
+    if critical == 0 && high == 0 && medium == 0 && internal_couplings >= 20 {
+        return HealthGrade::S;
+    }
+
+    // A: Very Good - no high issues AND very low medium issues (< 5%)
     if high == 0 && medium_density <= 0.05 && internal_couplings >= 10 {
         return HealthGrade::A;
     }
@@ -1233,8 +1241,11 @@ mod tests {
     fn test_health_grade_calculation() {
         let mut issues = HashMap::new();
 
-        // No issues with enough data = A (high == 0 && medium_density <= 0.05 && internal >= 10)
-        assert_eq!(calculate_health_grade(&issues, 100), HealthGrade::A);
+        // No issues with >= 20 couplings = S (exceptional, possibly over-engineered)
+        assert_eq!(calculate_health_grade(&issues, 100), HealthGrade::S);
+
+        // No issues with 10-19 couplings = A (good but not enough data for S)
+        assert_eq!(calculate_health_grade(&issues, 15), HealthGrade::A);
 
         // No internal couplings = B (can't assess without data)
         assert_eq!(calculate_health_grade(&issues, 0), HealthGrade::B);

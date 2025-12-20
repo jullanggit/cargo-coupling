@@ -333,6 +333,11 @@ pub fn project_to_graph(metrics: &ProjectMetrics, thresholds: &IssueThresholds) 
     // Add nodes that appear only in couplings but not in modules (external crates)
     for coupling in &metrics.couplings {
         for full_path in [&coupling.source, &coupling.target] {
+            // Skip glob imports (e.g., "crate::*", "foo::*")
+            if full_path.ends_with("::*") || full_path == "*" {
+                continue;
+            }
+
             // Normalize to node ID (use short name for internal modules)
             let node_id = normalize_to_node_id(full_path);
 
@@ -390,6 +395,15 @@ pub fn project_to_graph(metrics: &ProjectMetrics, thresholds: &IssueThresholds) 
     let mut edges: Vec<Edge> = Vec::new();
 
     for (edge_id, coupling) in metrics.couplings.iter().enumerate() {
+        // Skip edges involving glob imports
+        if coupling.source.ends_with("::*")
+            || coupling.source == "*"
+            || coupling.target.ends_with("::*")
+            || coupling.target == "*"
+        {
+            continue;
+        }
+
         let source_id = normalize_to_node_id(&coupling.source);
         let target_id = normalize_to_node_id(&coupling.target);
 

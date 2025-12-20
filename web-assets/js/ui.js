@@ -62,6 +62,17 @@ export function setupFilters() {
         const balanceMax = parseInt(document.getElementById('balance-max')?.value || 100) / 100;
         const issuesOnly = document.getElementById('show-issues-only')?.checked;
         const cyclesOnly = document.getElementById('show-cycles-only')?.checked;
+        const hideExternal = document.getElementById('hide-external')?.checked;
+
+        // First, determine which nodes are internal (have source file path)
+        const internalNodes = new Set();
+        state.cy.nodes().forEach(node => {
+            const filePath = node.data('file_path');
+            const isInternal = filePath && !filePath.startsWith('[external]');
+            if (isInternal) {
+                internalNodes.add(node.id());
+            }
+        });
 
         state.cy.edges().forEach(edge => {
             const strength = edge.data('strengthLabel') || 'Model';
@@ -70,6 +81,13 @@ export function setupFilters() {
             const balance = edge.data('balance') ?? 0.5;
             const hasIssue = edge.data('issue');
             const inCycle = edge.data('inCycle');
+            const edgeType = edge.data('edgeType');
+
+            // Skip filtering for parent/item edges
+            if (edgeType === 'parent' || edgeType === 'item-dep') {
+                edge.style('display', 'element');
+                return;
+            }
 
             let visible = true;
             if (!strengths.includes(strength)) visible = false;
@@ -79,14 +97,38 @@ export function setupFilters() {
             if (issuesOnly && !hasIssue) visible = false;
             if (cyclesOnly && !inCycle) visible = false;
 
+            // Hide edges to/from external nodes if hide-external is checked
+            if (hideExternal) {
+                const sourceInternal = internalNodes.has(edge.data('source'));
+                const targetInternal = internalNodes.has(edge.data('target'));
+                if (!sourceInternal || !targetInternal) visible = false;
+            }
+
             edge.style('display', visible ? 'element' : 'none');
         });
 
-        // Hide nodes with no visible edges
+        // Hide nodes with no visible edges OR external nodes if hideExternal is checked
         state.cy.nodes().forEach(node => {
+            const nodeType = node.data('nodeType');
+            const filePath = node.data('file_path');
+            const isExternal = filePath && filePath.startsWith('[external]');
+            const isInternal = filePath && !filePath.startsWith('[external]');
+
+            // Always show item nodes if their parent is visible
+            if (nodeType === 'item') {
+                const parentVisible = state.cy.getElementById(node.data('parentModule')).style('display') !== 'none';
+                node.style('display', parentVisible ? 'element' : 'none');
+                return;
+            }
+
+            // Hide external nodes if filter is on
+            if (hideExternal && isExternal) {
+                node.style('display', 'none');
+                return;
+            }
+
             const visibleEdges = node.connectedEdges().filter(e => e.style('display') !== 'none');
-            const hasInternalPath = node.data('file_path') && node.data('file_path').includes('/src/');
-            const nodeVisible = visibleEdges.length > 0 || hasInternalPath;
+            const nodeVisible = visibleEdges.length > 0 || isInternal;
             node.style('display', nodeVisible ? 'element' : 'none');
         });
 
@@ -107,6 +149,7 @@ export function setupFilters() {
 
     document.getElementById('show-issues-only')?.addEventListener('change', applyFilters);
     document.getElementById('show-cycles-only')?.addEventListener('change', applyFilters);
+    document.getElementById('hide-external')?.addEventListener('change', applyFilters);
 
     document.getElementById('reset-filters')?.addEventListener('click', () => {
         document.querySelectorAll('#strength-filters input, #volatility-filters input').forEach(cb => cb.checked = true);
@@ -117,6 +160,7 @@ export function setupFilters() {
         document.getElementById('balance-max').value = 100;
         document.getElementById('show-issues-only').checked = false;
         document.getElementById('show-cycles-only').checked = false;
+        document.getElementById('hide-external').checked = true; // Default: hide external
 
         state.cy.elements().removeClass('hidden highlighted dimmed dependency-source dependency-target search-match');
         applyFilters();

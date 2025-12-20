@@ -459,6 +459,7 @@ fn write_executive_summary<W: Write>(
 
     // Health Grade with emoji
     let grade_emoji = match report.health_grade {
+        crate::balance::HealthGrade::S => "⭐",
         crate::balance::HealthGrade::A => "🟢",
         crate::balance::HealthGrade::B => "🟢",
         crate::balance::HealthGrade::C => "🟡",
