@@ -385,6 +385,8 @@ pub struct IssueThresholds {
     pub min_primitive_params: usize,
     /// Strict mode: only show Medium/High/Critical issues
     pub strict_mode: bool,
+    /// Show explanations in Japanese
+    pub japanese: bool,
 }
 
 impl Default for IssueThresholds {
@@ -400,6 +402,7 @@ impl Default for IssueThresholds {
             max_impls: 20,         // More than 20 implementations = God Module
             min_primitive_params: 3, // 3+ primitive params = Primitive Obsession
             strict_mode: true,     // Show only important issues by default
+            japanese: false,       // English by default
         }
     }
 }

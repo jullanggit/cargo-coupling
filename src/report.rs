@@ -23,92 +23,184 @@ pub fn generate_summary_with_thresholds<W: Write>(
 ) -> io::Result<()> {
     let report = analyze_project_balance_with_thresholds(metrics, thresholds);
     let dimension_stats = metrics.calculate_dimension_stats();
+    let jp = thresholds.japanese;
 
     let project_name = metrics.workspace_name.as_deref().unwrap_or("project");
-    writeln!(writer, "Balanced Coupling Analysis: {}", project_name)?;
-    writeln!(writer, "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")?;
-    writeln!(writer)?;
 
-    writeln!(
-        writer,
-        "Grade: {} | Score: {:.2}/1.00 | Modules: {}",
-        report.health_grade, report.average_score, metrics.module_count()
-    )?;
+    if jp {
+        writeln!(writer, "カップリング分析: {}", project_name)?;
+        writeln!(writer, "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")?;
+        writeln!(writer)?;
+        writeln!(
+            writer,
+            "評価: {} | スコア: {:.2}/1.00 | モジュール数: {}",
+            report.health_grade, report.average_score, metrics.module_count()
+        )?;
+    } else {
+        writeln!(writer, "Balanced Coupling Analysis: {}", project_name)?;
+        writeln!(writer, "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")?;
+        writeln!(writer)?;
+        writeln!(
+            writer,
+            "Grade: {} | Score: {:.2}/1.00 | Modules: {}",
+            report.health_grade, report.average_score, metrics.module_count()
+        )?;
+    }
     writeln!(writer)?;
 
     // 3-Dimensional Analysis
     if !metrics.couplings.is_empty() {
-        writeln!(writer, "┌─ 3-Dimensional Analysis ──────────────────────────────────┐")?;
+        if jp {
+            writeln!(writer, "┌─ 3次元分析 ────────────────────────────────────────────────┐")?;
+            writeln!(writer, "│ 【結合強度】どれだけ密に依存しているか")?;
+        } else {
+            writeln!(writer, "┌─ 3-Dimensional Analysis ──────────────────────────────────┐")?;
+        }
 
         // Strength distribution
         let (intr_pct, func_pct, model_pct, contract_pct) = dimension_stats.strength_percentages();
-        writeln!(
-            writer,
-            "│ Strength  : Contract {:.0}%, Model {:.0}%, Functional {:.0}%, Intrusive {:.0}%",
-            contract_pct, model_pct, func_pct, intr_pct
-        )?;
+        if jp {
+            writeln!(
+                writer,
+                "│   Contract(トレイト) {:.0}%, Model(型) {:.0}%, Functional(関数) {:.0}%, Intrusive(内部) {:.0}%",
+                contract_pct, model_pct, func_pct, intr_pct
+            )?;
+            writeln!(writer, "│ 【距離】モジュール間の距離")?;
+        } else {
+            writeln!(
+                writer,
+                "│ Strength  : Contract {:.0}%, Model {:.0}%, Functional {:.0}%, Intrusive {:.0}%",
+                contract_pct, model_pct, func_pct, intr_pct
+            )?;
+        }
 
         // Distance distribution
         let (same_pct, diff_pct, ext_pct) = dimension_stats.distance_percentages();
-        writeln!(
-            writer,
-            "│ Distance  : Same Module {:.0}%, Different Module {:.0}%, External {:.0}%",
-            same_pct, diff_pct, ext_pct
-        )?;
+        if jp {
+            writeln!(
+                writer,
+                "│   同一モジュール {:.0}%, 別モジュール {:.0}%, 外部クレート {:.0}%",
+                same_pct, diff_pct, ext_pct
+            )?;
+            writeln!(writer, "│ 【変更頻度】Git履歴からの変更回数")?;
+        } else {
+            writeln!(
+                writer,
+                "│ Distance  : Same Module {:.0}%, Different Module {:.0}%, External {:.0}%",
+                same_pct, diff_pct, ext_pct
+            )?;
+        }
 
         // Volatility distribution
         let (low_pct, med_pct, high_pct) = dimension_stats.volatility_percentages();
-        writeln!(
-            writer,
-            "│ Volatility: Low {:.0}%, Medium {:.0}%, High {:.0}%",
-            low_pct, med_pct, high_pct
-        )?;
+        if jp {
+            writeln!(
+                writer,
+                "│   低(安定) {:.0}%, 中 {:.0}%, 高(頻繁に変更) {:.0}%",
+                low_pct, med_pct, high_pct
+            )?;
+        } else {
+            writeln!(
+                writer,
+                "│ Volatility: Low {:.0}%, Medium {:.0}%, High {:.0}%",
+                low_pct, med_pct, high_pct
+            )?;
+        }
         writeln!(writer, "└────────────────────────────────────────────────────────────┘")?;
         writeln!(writer)?;
 
         // Balance Classification
-        writeln!(writer, "Balance State:")?;
+        if jp {
+            writeln!(writer, "バランス状態:")?;
+        } else {
+            writeln!(writer, "Balance State:")?;
+        }
         let bc = &dimension_stats.balance_counts;
         let total = dimension_stats.total();
         if bc.high_cohesion > 0 {
-            writeln!(
-                writer,
-                "  ✅ High Cohesion (strong+close): {} ({:.0}%)",
-                bc.high_cohesion,
-                bc.high_cohesion as f64 / total as f64 * 100.0
-            )?;
+            if jp {
+                writeln!(
+                    writer,
+                    "  ✅ 高凝集 (強い結合 + 近い距離): {} ({:.0}%) ← 理想的",
+                    bc.high_cohesion,
+                    bc.high_cohesion as f64 / total as f64 * 100.0
+                )?;
+            } else {
+                writeln!(
+                    writer,
+                    "  ✅ High Cohesion (strong+close): {} ({:.0}%)",
+                    bc.high_cohesion,
+                    bc.high_cohesion as f64 / total as f64 * 100.0
+                )?;
+            }
         }
         if bc.loose_coupling > 0 {
-            writeln!(
-                writer,
-                "  ✅ Loose Coupling (weak+far): {} ({:.0}%)",
-                bc.loose_coupling,
-                bc.loose_coupling as f64 / total as f64 * 100.0
-            )?;
+            if jp {
+                writeln!(
+                    writer,
+                    "  ✅ 疎結合 (弱い結合 + 遠い距離): {} ({:.0}%) ← 理想的",
+                    bc.loose_coupling,
+                    bc.loose_coupling as f64 / total as f64 * 100.0
+                )?;
+            } else {
+                writeln!(
+                    writer,
+                    "  ✅ Loose Coupling (weak+far): {} ({:.0}%)",
+                    bc.loose_coupling,
+                    bc.loose_coupling as f64 / total as f64 * 100.0
+                )?;
+            }
         }
         if bc.acceptable > 0 {
-            writeln!(
-                writer,
-                "  🤔 Acceptable (strong+far+stable): {} ({:.0}%)",
-                bc.acceptable,
-                bc.acceptable as f64 / total as f64 * 100.0
-            )?;
+            if jp {
+                writeln!(
+                    writer,
+                    "  🤔 許容可能 (強い結合 + 遠い距離 + 安定): {} ({:.0}%)",
+                    bc.acceptable,
+                    bc.acceptable as f64 / total as f64 * 100.0
+                )?;
+            } else {
+                writeln!(
+                    writer,
+                    "  🤔 Acceptable (strong+far+stable): {} ({:.0}%)",
+                    bc.acceptable,
+                    bc.acceptable as f64 / total as f64 * 100.0
+                )?;
+            }
         }
         if bc.pain > 0 {
-            writeln!(
-                writer,
-                "  ❌ Needs Refactoring (strong+far+volatile): {} ({:.0}%)",
-                bc.pain,
-                bc.pain as f64 / total as f64 * 100.0
-            )?;
+            if jp {
+                writeln!(
+                    writer,
+                    "  ❌ 要リファクタリング (強い結合 + 遠い距離 + 頻繁に変更): {} ({:.0}%)",
+                    bc.pain,
+                    bc.pain as f64 / total as f64 * 100.0
+                )?;
+            } else {
+                writeln!(
+                    writer,
+                    "  ❌ Needs Refactoring (strong+far+volatile): {} ({:.0}%)",
+                    bc.pain,
+                    bc.pain as f64 / total as f64 * 100.0
+                )?;
+            }
         }
         if bc.local_complexity > 0 {
-            writeln!(
-                writer,
-                "  🔍 Local Complexity (weak+close): {} ({:.0}%)",
-                bc.local_complexity,
-                bc.local_complexity as f64 / total as f64 * 100.0
-            )?;
+            if jp {
+                writeln!(
+                    writer,
+                    "  🔍 局所的複雑性 (弱い結合 + 近い距離): {} ({:.0}%)",
+                    bc.local_complexity,
+                    bc.local_complexity as f64 / total as f64 * 100.0
+                )?;
+            } else {
+                writeln!(
+                    writer,
+                    "  🔍 Local Complexity (weak+close): {} ({:.0}%)",
+                    bc.local_complexity,
+                    bc.local_complexity as f64 / total as f64 * 100.0
+                )?;
+            }
         }
         writeln!(writer)?;
     }
@@ -126,33 +218,70 @@ pub fn generate_summary_with_thresholds<W: Write>(
     let low = *report.issues_by_severity.get(&Severity::Low).unwrap_or(&0);
 
     if critical > 0 || high > 0 || medium > 0 || low > 0 {
-        writeln!(writer, "Detected Issues:")?;
-        if critical > 0 {
-            writeln!(writer, "  🔴 Critical: {} (must fix)", critical)?;
-        }
-        if high > 0 {
-            writeln!(writer, "  🟠 High: {} (should fix)", high)?;
-        }
-        if medium > 0 {
-            writeln!(writer, "  🟡 Medium: {}", medium)?;
-        }
-        if low > 0 {
-            writeln!(writer, "  ⚪ Low: {}", low)?;
+        if jp {
+            writeln!(writer, "検出された問題:")?;
+            if critical > 0 {
+                writeln!(writer, "  🔴 緊急: {} 件 (すぐに修正が必要)", critical)?;
+            }
+            if high > 0 {
+                writeln!(writer, "  🟠 高: {} 件 (早めに対処)", high)?;
+            }
+            if medium > 0 {
+                writeln!(writer, "  🟡 中: {} 件", medium)?;
+            }
+            if low > 0 {
+                writeln!(writer, "  ⚪ 低: {} 件", low)?;
+            }
+        } else {
+            writeln!(writer, "Detected Issues:")?;
+            if critical > 0 {
+                writeln!(writer, "  🔴 Critical: {} (must fix)", critical)?;
+            }
+            if high > 0 {
+                writeln!(writer, "  🟠 High: {} (should fix)", high)?;
+            }
+            if medium > 0 {
+                writeln!(writer, "  🟡 Medium: {}", medium)?;
+            }
+            if low > 0 {
+                writeln!(writer, "  ⚪ Low: {}", low)?;
+            }
         }
         writeln!(writer)?;
     } else if thresholds.strict_mode {
-        writeln!(writer, "Detected Issues: None (use --all to see Low severity)\n")?;
+        if jp {
+            writeln!(writer, "検出された問題: なし (--all で低優先度も表示)\n")?;
+        } else {
+            writeln!(writer, "Detected Issues: None (use --all to see Low severity)\n")?;
+        }
     }
 
     // Top priority if any
     if !report.top_priorities.is_empty() {
-        writeln!(writer, "Top Priorities:")?;
-        for issue in report.top_priorities.iter().take(3) {
-            writeln!(
-                writer,
-                "  - [{}] {} → {}",
-                issue.severity, issue.source, issue.target
-            )?;
+        if jp {
+            writeln!(writer, "優先的に対処すべき問題:")?;
+            for issue in report.top_priorities.iter().take(3) {
+                let issue_jp = issue_type_japanese(issue.issue_type);
+                writeln!(
+                    writer,
+                    "  - {} | {}",
+                    issue_jp, issue.source
+                )?;
+                writeln!(
+                    writer,
+                    "    → {}",
+                    refactoring_action_japanese(&issue.refactoring)
+                )?;
+            }
+        } else {
+            writeln!(writer, "Top Priorities:")?;
+            for issue in report.top_priorities.iter().take(3) {
+                writeln!(
+                    writer,
+                    "  - [{}] {} → {}",
+                    issue.severity, issue.source, issue.target
+                )?;
+            }
         }
         writeln!(writer)?;
     }
@@ -162,32 +291,123 @@ pub fn generate_summary_with_thresholds<W: Write>(
     let type_count = metrics.total_type_count();
     if type_count > 0 {
         let newtype_ratio = metrics.newtype_ratio() * 100.0;
-        let quality = if newtype_ratio >= 20.0 {
-            "✅ Good"
-        } else if newtype_ratio >= 10.0 {
-            "🤔 Consider more"
+        if jp {
+            let quality = if newtype_ratio >= 20.0 {
+                "✅ 良好"
+            } else if newtype_ratio >= 10.0 {
+                "🤔 増やすことを検討"
+            } else {
+                "⚠️ 少ない"
+            };
+            writeln!(
+                writer,
+                "Rustパターン: newtype使用率 {}/{} ({:.0}%) - {}",
+                newtype_count, type_count, newtype_ratio, quality
+            )?;
         } else {
-            "⚠️ Low usage"
-        };
-        writeln!(
-            writer,
-            "Rust Patterns: Newtype usage: {}/{} ({:.0}%) - {}",
-            newtype_count, type_count, newtype_ratio, quality
-        )?;
+            let quality = if newtype_ratio >= 20.0 {
+                "✅ Good"
+            } else if newtype_ratio >= 10.0 {
+                "🤔 Consider more"
+            } else {
+                "⚠️ Low usage"
+            };
+            writeln!(
+                writer,
+                "Rust Patterns: Newtype usage: {}/{} ({:.0}%) - {}",
+                newtype_count, type_count, newtype_ratio, quality
+            )?;
+        }
         writeln!(writer)?;
     }
 
     // Circular dependencies
     let circular = metrics.circular_dependency_summary();
     if circular.total_cycles > 0 {
-        writeln!(
-            writer,
-            "⚠️ Circular Dependencies: {} cycles ({} modules)",
-            circular.total_cycles, circular.affected_modules
-        )?;
+        if jp {
+            writeln!(
+                writer,
+                "⚠️ 循環依存: {} サイクル ({} モジュール)",
+                circular.total_cycles, circular.affected_modules
+            )?;
+        } else {
+            writeln!(
+                writer,
+                "⚠️ Circular Dependencies: {} cycles ({} modules)",
+                circular.total_cycles, circular.affected_modules
+            )?;
+        }
+    }
+
+    // Design decision matrix (Japanese only, for educational purposes)
+    if jp {
+        writeln!(writer)?;
+        writeln!(writer, "┌─ 設計判断マトリクス ──────────────────────────────────────┐")?;
+        writeln!(writer, "│ 結合強度 │  距離  │ 変更頻度 │ 判定           │")?;
+        writeln!(writer, "├──────────┼────────┼──────────┼────────────────┤")?;
+        writeln!(writer, "│ 強い     │ 近い   │ 任意     │ ✅ 高凝集      │")?;
+        writeln!(writer, "│ 弱い     │ 遠い   │ 任意     │ ✅ 疎結合      │")?;
+        writeln!(writer, "│ 強い     │ 遠い   │ 低い     │ 🤔 許容可能    │")?;
+        writeln!(writer, "│ 強い     │ 遠い   │ 高い     │ ❌ 要リファクタ │")?;
+        writeln!(writer, "└──────────┴────────┴──────────┴────────────────┘")?;
     }
 
     Ok(())
+}
+
+/// Get Japanese translation for issue type
+fn issue_type_japanese(issue_type: crate::balance::IssueType) -> &'static str {
+    use crate::balance::IssueType;
+    match issue_type {
+        IssueType::GlobalComplexity => "グローバル複雑性 (遠距離への強い依存)",
+        IssueType::CascadingChangeRisk => "変更波及リスク (頻繁に変わるものへの依存)",
+        IssueType::InappropriateIntimacy => "不適切な親密さ (内部実装への依存)",
+        IssueType::HighEfferentCoupling => "出力依存過多 (多くのモジュールに依存)",
+        IssueType::HighAfferentCoupling => "入力依存過多 (多くのモジュールから依存される)",
+        IssueType::UnnecessaryAbstraction => "過剰な抽象化",
+        IssueType::CircularDependency => "循環依存",
+        IssueType::ShallowModule => "浅いモジュール",
+        IssueType::PassThroughMethod => "パススルーメソッド",
+        IssueType::HighCognitiveLoad => "高認知負荷",
+        IssueType::GodModule => "神モジュール (責務が多すぎる)",
+        IssueType::PublicFieldExposure => "公開フィールド (getterを検討)",
+        IssueType::PrimitiveObsession => "プリミティブ過多 (newtypeを検討)",
+    }
+}
+
+/// Get Japanese translation for refactoring action
+fn refactoring_action_japanese(action: &crate::balance::RefactoringAction) -> String {
+    use crate::balance::RefactoringAction;
+    match action {
+        RefactoringAction::IntroduceTrait { suggested_name, .. } => {
+            format!("トレイト `{}` を導入して抽象化する", suggested_name)
+        }
+        RefactoringAction::MoveCloser { target_location } => {
+            format!("`{}` に移動して距離を縮める", target_location)
+        }
+        RefactoringAction::ExtractAdapter { adapter_name, .. } => {
+            format!("アダプタ `{}` を抽出する", adapter_name)
+        }
+        RefactoringAction::SplitModule { suggested_modules } => {
+            format!("モジュールを分割: {}", suggested_modules.join(", "))
+        }
+        RefactoringAction::SimplifyAbstraction { .. } => {
+            "抽象化を簡素化する".to_string()
+        }
+        RefactoringAction::BreakCycle { suggested_direction } => {
+            format!("循環を断つ: {}", suggested_direction)
+        }
+        RefactoringAction::StabilizeInterface { interface_name } => {
+            format!("安定したインターフェース `{}` を追加", interface_name)
+        }
+        RefactoringAction::General { action } => action.clone(),
+        RefactoringAction::AddGetters { .. } => {
+            "getterメソッドを追加する".to_string()
+        }
+        RefactoringAction::IntroduceNewtype { suggested_name, wrapped_type } => {
+            format!("newtype `struct {}({})` を導入", suggested_name, wrapped_type)
+        }
+    }
 }
 
 /// Generate a full Markdown report with refactoring suggestions

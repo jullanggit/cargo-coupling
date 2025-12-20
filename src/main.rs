@@ -150,6 +150,10 @@ struct Args {
     /// Show all issues including Low severity (default: only Medium/High/Critical)
     #[arg(long)]
     all: bool,
+
+    /// Show explanations in Japanese (日本語で解説を表示)
+    #[arg(long, visible_alias = "jp")]
+    japanese: bool,
 }
 
 fn main() {
@@ -283,6 +287,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
             .max_dependents
             .unwrap_or(config.thresholds.max_dependents),
         strict_mode: !args.all, // Default is strict (hide Low), --all shows everything
+        japanese: args.japanese,
         ..IssueThresholds::default()
     };
 
