@@ -393,6 +393,14 @@
         </div>
     </div>
 
-    <script src="/js/app.js"></script>
+    <!-- ES6 Modules -->
+    <script type="module" src="/js/main.js"></script>
+    <!-- Fallback for toggleHelpModal -->
+    <script>
+        function toggleHelpModal() {
+            const modal = document.getElementById('help-modal');
+            if (modal) modal.classList.toggle('visible');
+        }
+    </script>
 </body>
 </html>

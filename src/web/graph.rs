@@ -66,6 +66,12 @@ pub struct NodeMetrics {
     pub trait_impl_count: usize,
     pub inherent_impl_count: usize,
     pub volatility: f64,
+    /// Number of functions defined in this module
+    pub fn_count: usize,
+    /// Number of types (structs, enums) defined in this module
+    pub type_count: usize,
+    /// Total impl count (trait + inherent)
+    pub impl_count: usize,
 }
 
 /// Location information for an edge
@@ -154,6 +160,11 @@ pub struct IssuesByServerity {
     pub low: usize,
 }
 
+/// Helper to extract short module name from full path
+fn get_short_name(full_path: &str) -> &str {
+    full_path.split("::").last().unwrap_or(full_path)
+}
+
 /// Convert ProjectMetrics to GraphData for visualization
 pub fn project_to_graph(metrics: &ProjectMetrics, thresholds: &IssueThresholds) -> GraphData {
     let balance_report = analyze_project_balance(metrics);
@@ -176,30 +187,44 @@ pub fn project_to_graph(metrics: &ProjectMetrics, thresholds: &IssueThresholds) 
         })
         .collect();
 
-    // Build node metrics from couplings
+    // Build a mapping from full path to short name for internal modules
+    // This allows us to normalize edge source/target to match node IDs
+    let module_short_names: HashSet<&str> = metrics.modules.keys().map(|s| s.as_str()).collect();
+
+    // Helper closure to normalize a path to existing node ID
+    let normalize_to_node_id = |path: &str| -> String {
+        let short = get_short_name(path);
+        if module_short_names.contains(short) {
+            short.to_string()
+        } else {
+            // Keep full path for external crates
+            path.to_string()
+        }
+    };
+
+    // Build node metrics from couplings (using normalized IDs)
     let mut node_couplings_out: HashMap<String, usize> = HashMap::new();
     let mut node_couplings_in: HashMap<String, usize> = HashMap::new();
     let mut node_balance_scores: HashMap<String, Vec<f64>> = HashMap::new();
     let mut node_volatility: HashMap<String, f64> = HashMap::new();
 
     for coupling in &metrics.couplings {
-        *node_couplings_out
-            .entry(coupling.source.clone())
-            .or_insert(0) += 1;
-        *node_couplings_in
-            .entry(coupling.target.clone())
-            .or_insert(0) += 1;
+        let source_id = normalize_to_node_id(&coupling.source);
+        let target_id = normalize_to_node_id(&coupling.target);
+
+        *node_couplings_out.entry(source_id.clone()).or_insert(0) += 1;
+        *node_couplings_in.entry(target_id.clone()).or_insert(0) += 1;
 
         let score = BalanceScore::calculate(coupling);
         node_balance_scores
-            .entry(coupling.source.clone())
+            .entry(source_id)
             .or_default()
             .push(score.score);
 
         // Track volatility for target
         let vol = coupling.volatility.value();
         node_volatility
-            .entry(coupling.target.clone())
+            .entry(target_id)
             .and_modify(|v| *v = v.max(vol))
             .or_insert(vol);
     }
@@ -279,6 +304,11 @@ pub fn project_to_graph(metrics: &ProjectMetrics, thresholds: &IssueThresholds) 
             dependencies: item_deps_map.get(&def.name).cloned().unwrap_or_default(),
         }));
 
+        // Count functions and types
+        let fn_count = module.function_definitions.len();
+        let type_count = module.type_definitions.len();
+        let impl_count = module.trait_impl_count + module.inherent_impl_count;
+
         nodes.push(Node {
             id: name.clone(),
             label: module.name.clone(),
@@ -290,6 +320,9 @@ pub fn project_to_graph(metrics: &ProjectMetrics, thresholds: &IssueThresholds) 
                 trait_impl_count: module.trait_impl_count,
                 inherent_impl_count: module.inherent_impl_count,
                 volatility: node_volatility.get(name).copied().unwrap_or(0.0),
+                fn_count,
+                type_count,
+                impl_count,
             },
             in_cycle: cycle_nodes.contains(name),
             file_path: Some(module.path.display().to_string()),
@@ -297,49 +330,69 @@ pub fn project_to_graph(metrics: &ProjectMetrics, thresholds: &IssueThresholds) 
         });
     }
 
-    // Add nodes that appear only in couplings but not in modules
+    // Add nodes that appear only in couplings but not in modules (external crates)
     for coupling in &metrics.couplings {
-        for name in [&coupling.source, &coupling.target] {
-            if !seen_nodes.contains(name) {
-                seen_nodes.insert(name.clone());
+        for full_path in [&coupling.source, &coupling.target] {
+            // Normalize to node ID (use short name for internal modules)
+            let node_id = normalize_to_node_id(full_path);
 
-                let out_count = node_couplings_out.get(name).copied().unwrap_or(0);
-                let in_count = node_couplings_in.get(name).copied().unwrap_or(0);
-                let avg_balance = node_balance_scores
-                    .get(name)
-                    .map(|scores| scores.iter().sum::<f64>() / scores.len() as f64)
-                    .unwrap_or(1.0);
-
-                let health = if avg_balance >= 0.8 {
-                    "good"
-                } else {
-                    "needs_review"
-                };
-
-                nodes.push(Node {
-                    id: name.clone(),
-                    label: name.split("::").last().unwrap_or(name).to_string(),
-                    metrics: NodeMetrics {
-                        couplings_out: out_count,
-                        couplings_in: in_count,
-                        balance_score: avg_balance,
-                        health: health.to_string(),
-                        trait_impl_count: 0,
-                        inherent_impl_count: 0,
-                        volatility: node_volatility.get(name).copied().unwrap_or(0.0),
-                    },
-                    in_cycle: cycle_nodes.contains(name),
-                    file_path: None,
-                    items: Vec::new(),
-                });
+            // Skip if already seen (either as internal module or previously added external)
+            if seen_nodes.contains(&node_id) {
+                continue;
             }
+            seen_nodes.insert(node_id.clone());
+
+            let out_count = node_couplings_out.get(&node_id).copied().unwrap_or(0);
+            let in_count = node_couplings_in.get(&node_id).copied().unwrap_or(0);
+            let avg_balance = node_balance_scores
+                .get(&node_id)
+                .map(|scores| scores.iter().sum::<f64>() / scores.len() as f64)
+                .unwrap_or(1.0);
+
+            let health = if avg_balance >= 0.8 {
+                "good"
+            } else {
+                "needs_review"
+            };
+
+            // Determine if this is an external crate
+            let is_external = full_path.contains("::")
+                && !full_path.starts_with("crate::")
+                && !module_short_names.contains(get_short_name(full_path));
+
+            nodes.push(Node {
+                id: node_id.clone(),
+                label: get_short_name(full_path).to_string(),
+                metrics: NodeMetrics {
+                    couplings_out: out_count,
+                    couplings_in: in_count,
+                    balance_score: avg_balance,
+                    health: health.to_string(),
+                    trait_impl_count: 0,
+                    inherent_impl_count: 0,
+                    volatility: node_volatility.get(&node_id).copied().unwrap_or(0.0),
+                    fn_count: 0,
+                    type_count: 0,
+                    impl_count: 0,
+                },
+                in_cycle: cycle_nodes.contains(&node_id),
+                file_path: if is_external {
+                    Some(format!("[external] {}", full_path))
+                } else {
+                    None
+                },
+                items: Vec::new(),
+            });
         }
     }
 
-    // Build edges
+    // Build edges (using normalized node IDs)
     let mut edges: Vec<Edge> = Vec::new();
 
     for (edge_id, coupling) in metrics.couplings.iter().enumerate() {
+        let source_id = normalize_to_node_id(&coupling.source);
+        let target_id = normalize_to_node_id(&coupling.target);
+
         let score = BalanceScore::calculate(coupling);
         let in_cycle = cycle_edges.contains(&(coupling.source.clone(), coupling.target.clone()));
 
@@ -361,8 +414,8 @@ pub fn project_to_graph(metrics: &ProjectMetrics, thresholds: &IssueThresholds) 
 
         edges.push(Edge {
             id: format!("e{}", edge_id),
-            source: coupling.source.clone(),
-            target: coupling.target.clone(),
+            source: source_id,
+            target: target_id,
             dimensions: coupling_to_dimensions(coupling, &score),
             issue,
             in_cycle,

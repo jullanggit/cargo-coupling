@@ -34,7 +34,9 @@ pub fn generate_summary_with_thresholds<W: Write>(
         writeln!(
             writer,
             "評価: {} | スコア: {:.2}/1.00 | モジュール数: {}",
-            report.health_grade, report.average_score, metrics.module_count()
+            report.health_grade,
+            report.average_score,
+            metrics.module_count()
         )?;
     } else {
         writeln!(writer, "Balanced Coupling Analysis: {}", project_name)?;
@@ -43,7 +45,9 @@ pub fn generate_summary_with_thresholds<W: Write>(
         writeln!(
             writer,
             "Grade: {} | Score: {:.2}/1.00 | Modules: {}",
-            report.health_grade, report.average_score, metrics.module_count()
+            report.health_grade,
+            report.average_score,
+            metrics.module_count()
         )?;
     }
     writeln!(writer)?;
@@ -59,21 +63,42 @@ pub fn generate_summary_with_thresholds<W: Write>(
 
         if jp {
             writeln!(writer, "3次元分析:")?;
-            writeln!(writer, "  結合強度: Contract {:.0}% / Model {:.0}% / Functional {:.0}% / Intrusive {:.0}%",
-                contract_pct, model_pct, func_pct, intr_pct)?;
-            writeln!(writer, "           (トレイト)   (型)      (関数)        (内部アクセス)")?;
-            writeln!(writer, "  距離:     同一モジュール {:.0}% / 別モジュール {:.0}% / 外部 {:.0}%",
-                same_pct, diff_pct, ext_pct)?;
-            writeln!(writer, "  変更頻度: 低 {:.0}% / 中 {:.0}% / 高 {:.0}%",
-                low_pct, med_pct, high_pct)?;
+            writeln!(
+                writer,
+                "  結合強度: Contract {:.0}% / Model {:.0}% / Functional {:.0}% / Intrusive {:.0}%",
+                contract_pct, model_pct, func_pct, intr_pct
+            )?;
+            writeln!(
+                writer,
+                "           (トレイト)   (型)      (関数)        (内部アクセス)"
+            )?;
+            writeln!(
+                writer,
+                "  距離:     同一モジュール {:.0}% / 別モジュール {:.0}% / 外部 {:.0}%",
+                same_pct, diff_pct, ext_pct
+            )?;
+            writeln!(
+                writer,
+                "  変更頻度: 低 {:.0}% / 中 {:.0}% / 高 {:.0}%",
+                low_pct, med_pct, high_pct
+            )?;
         } else {
             writeln!(writer, "3-Dimensional Analysis:")?;
-            writeln!(writer, "  Strength:   Contract {:.0}% / Model {:.0}% / Functional {:.0}% / Intrusive {:.0}%",
-                contract_pct, model_pct, func_pct, intr_pct)?;
-            writeln!(writer, "  Distance:   Same {:.0}% / Different {:.0}% / External {:.0}%",
-                same_pct, diff_pct, ext_pct)?;
-            writeln!(writer, "  Volatility: Low {:.0}% / Medium {:.0}% / High {:.0}%",
-                low_pct, med_pct, high_pct)?;
+            writeln!(
+                writer,
+                "  Strength:   Contract {:.0}% / Model {:.0}% / Functional {:.0}% / Intrusive {:.0}%",
+                contract_pct, model_pct, func_pct, intr_pct
+            )?;
+            writeln!(
+                writer,
+                "  Distance:   Same {:.0}% / Different {:.0}% / External {:.0}%",
+                same_pct, diff_pct, ext_pct
+            )?;
+            writeln!(
+                writer,
+                "  Volatility: Low {:.0}% / Medium {:.0}% / High {:.0}%",
+                low_pct, med_pct, high_pct
+            )?;
         }
         writeln!(writer)?;
 
@@ -220,7 +245,10 @@ pub fn generate_summary_with_thresholds<W: Write>(
         if jp {
             writeln!(writer, "検出された問題: なし (--all で低優先度も表示)\n")?;
         } else {
-            writeln!(writer, "Detected Issues: None (use --all to see Low severity)\n")?;
+            writeln!(
+                writer,
+                "Detected Issues: None (use --all to see Low severity)\n"
+            )?;
         }
     }
 
@@ -230,11 +258,7 @@ pub fn generate_summary_with_thresholds<W: Write>(
             writeln!(writer, "優先的に対処すべき問題:")?;
             for issue in report.top_priorities.iter().take(3) {
                 let issue_jp = issue_type_japanese(issue.issue_type);
-                writeln!(
-                    writer,
-                    "  - {} | {}",
-                    issue_jp, issue.source
-                )?;
+                writeln!(writer, "  - {} | {}", issue_jp, issue.source)?;
                 writeln!(
                     writer,
                     "    → {}",
@@ -314,7 +338,10 @@ pub fn generate_summary_with_thresholds<W: Write>(
         writeln!(writer, "  ✅ 強い結合 + 近い距離 → 高凝集 (理想的)")?;
         writeln!(writer, "  ✅ 弱い結合 + 遠い距離 → 疎結合 (理想的)")?;
         writeln!(writer, "  🤔 強い結合 + 遠い距離 + 安定 → 許容可能")?;
-        writeln!(writer, "  ❌ 強い結合 + 遠い距離 + 頻繁に変更 → 要リファクタリング")?;
+        writeln!(
+            writer,
+            "  ❌ 強い結合 + 遠い距離 + 頻繁に変更 → 要リファクタリング"
+        )?;
     }
 
     Ok(())
@@ -356,21 +383,25 @@ fn refactoring_action_japanese(action: &crate::balance::RefactoringAction) -> St
         RefactoringAction::SplitModule { suggested_modules } => {
             format!("モジュールを分割: {}", suggested_modules.join(", "))
         }
-        RefactoringAction::SimplifyAbstraction { .. } => {
-            "抽象化を簡素化する".to_string()
-        }
-        RefactoringAction::BreakCycle { suggested_direction } => {
+        RefactoringAction::SimplifyAbstraction { .. } => "抽象化を簡素化する".to_string(),
+        RefactoringAction::BreakCycle {
+            suggested_direction,
+        } => {
             format!("循環を断つ: {}", suggested_direction)
         }
         RefactoringAction::StabilizeInterface { interface_name } => {
             format!("安定したインターフェース `{}` を追加", interface_name)
         }
         RefactoringAction::General { action } => action.clone(),
-        RefactoringAction::AddGetters { .. } => {
-            "getterメソッドを追加する".to_string()
-        }
-        RefactoringAction::IntroduceNewtype { suggested_name, wrapped_type } => {
-            format!("newtype `struct {}({})` を導入", suggested_name, wrapped_type)
+        RefactoringAction::AddGetters { .. } => "getterメソッドを追加する".to_string(),
+        RefactoringAction::IntroduceNewtype {
+            suggested_name,
+            wrapped_type,
+        } => {
+            format!(
+                "newtype `struct {}({})` を導入",
+                suggested_name, wrapped_type
+            )
         }
     }
 }

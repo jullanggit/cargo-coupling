@@ -392,17 +392,17 @@ pub struct IssueThresholds {
 impl Default for IssueThresholds {
     fn default() -> Self {
         Self {
-            strong_coupling: 0.75, // Functional strength or higher (was 0.5)
-            far_distance: 0.5,     // DifferentModule or higher
-            high_volatility: 0.75, // High volatility only (was 0.5)
-            max_dependencies: 20,  // More than 20 outgoing dependencies (was 15)
-            max_dependents: 30,    // More than 30 incoming dependencies (was 20)
-            max_functions: 30,     // More than 30 functions = God Module
-            max_types: 15,         // More than 15 types = God Module
-            max_impls: 20,         // More than 20 implementations = God Module
+            strong_coupling: 0.75,   // Functional strength or higher (was 0.5)
+            far_distance: 0.5,       // DifferentModule or higher
+            high_volatility: 0.75,   // High volatility only (was 0.5)
+            max_dependencies: 20,    // More than 20 outgoing dependencies (was 15)
+            max_dependents: 30,      // More than 30 incoming dependencies (was 20)
+            max_functions: 30,       // More than 30 functions = God Module
+            max_types: 15,           // More than 15 types = God Module
+            max_impls: 20,           // More than 20 implementations = God Module
             min_primitive_params: 3, // 3+ primitive params = Primitive Obsession
-            strict_mode: true,     // Show only important issues by default
-            japanese: false,       // English by default
+            strict_mode: true,       // Show only important issues by default
+            japanese: false,         // English by default
         }
     }
 }

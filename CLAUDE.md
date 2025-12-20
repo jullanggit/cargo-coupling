@@ -236,6 +236,36 @@ Real-world validation on OSS projects (bat, fd, eza, ripgrep) showed:
 - ~~APOSD metrics~~: Overlap with existing analysis, removed for simplicity.
 - ~~Temporal coupling~~: Git-based detection was noisy, kept only volatility.
 
+### Web UI Architecture
+
+**Node ID Normalization (Critical Bug Fix)**:
+- `graph.rs`: Node IDs from `metrics.modules` used short names (`analyzer`)
+- Edge source/target used full paths (`cargo-coupling::analyzer`)
+- **Fix**: Normalize all IDs to short names for internal modules, keep full paths for external crates
+- Helper function: `get_short_name()` extracts last segment from `::` paths
+
+**JavaScript Module Structure** (ES6 modules):
+```
+web-assets/js/
+├── state.js      # Shared state & configuration
+├── i18n.js       # Internationalization (EN/JA)
+├── utils.js      # Utility functions (debounce, STABLE_CRATES, etc.)
+├── graph.js      # Cytoscape setup, styles, layouts, analyzeCoupling()
+├── ui.js         # UI components, filters, search, keyboard shortcuts
+├── item-graph.js # Item-level dependency graph
+└── main.js       # Entry point, initialization
+```
+
+**API Data Consistency**:
+- `NodeMetrics` now includes `fn_count`, `type_count`, `impl_count` from backend
+- Frontend should use API values, not recalculate from items array
+- External crates get `0` for all counts (no source access)
+
+**Center Mode vs Zoom Mode**:
+- Center mode (`centerMode=true`): Re-layout graph with selected node at center (concentric)
+- Zoom mode (`centerMode=false`): Just animate to center the node without re-layout
+- Toggle with 'c' key or checkbox
+
 ## References
 
 - JTBD: `.claude/docs/jobs-to-be-done.md`

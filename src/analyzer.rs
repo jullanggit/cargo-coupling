@@ -612,7 +612,10 @@ impl<'ast> Visit<'ast> for CouplingAnalyzer {
         // Detect newtype pattern: single-field tuple struct
         let (is_newtype, inner_type) = match &node.fields {
             syn::Fields::Unnamed(fields) if fields.unnamed.len() == 1 => {
-                let inner = fields.unnamed.first().and_then(|f| self.extract_type_name(&f.ty));
+                let inner = fields
+                    .unnamed
+                    .first()
+                    .and_then(|f| self.extract_type_name(&f.ty));
                 (true, inner)
             }
             _ => (false, None),
