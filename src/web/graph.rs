@@ -191,15 +191,44 @@ pub fn project_to_graph(metrics: &ProjectMetrics, thresholds: &IssueThresholds) 
     // This allows us to normalize edge source/target to match node IDs
     let module_short_names: HashSet<&str> = metrics.modules.keys().map(|s| s.as_str()).collect();
 
+    // Build a mapping from type/function names to their module names
+    // This allows us to resolve paths like "BalanceScore::calculate" to "balance"
+    let mut item_to_module: HashMap<&str, &str> = HashMap::new();
+    for (module_name, module) in &metrics.modules {
+        for type_name in module.type_definitions.keys() {
+            item_to_module.insert(type_name.as_str(), module_name.as_str());
+        }
+        for fn_name in module.function_definitions.keys() {
+            item_to_module.insert(fn_name.as_str(), module_name.as_str());
+        }
+    }
+
     // Helper closure to normalize a path to existing node ID
     let normalize_to_node_id = |path: &str| -> String {
+        // First try direct module name match
         let short = get_short_name(path);
         if module_short_names.contains(short) {
-            short.to_string()
-        } else {
-            // Keep full path for external crates
-            path.to_string()
+            return short.to_string();
         }
+
+        // Try to resolve via item name (type or function)
+        // e.g., "BalanceScore::calculate" -> look up "BalanceScore" -> "balance"
+        let parts: Vec<&str> = path.split("::").collect();
+        for part in &parts {
+            if let Some(module_name) = item_to_module.get(part) {
+                return (*module_name).to_string();
+            }
+        }
+
+        // Also try the first part which might be the module name
+        if let Some(first) = parts.first() {
+            if module_short_names.contains(*first) {
+                return (*first).to_string();
+            }
+        }
+
+        // Keep full path for external crates
+        path.to_string()
     };
 
     // Build node metrics from couplings (using normalized IDs)

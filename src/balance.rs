@@ -978,14 +978,14 @@ fn calculate_health_grade(
         return HealthGrade::C;
     }
 
-    // B: Some medium issues but manageable (> 5% medium density)
-    if medium_density > 0.05 || total_issue_density > 0.10 {
+    // B: Some medium issues but manageable (> 10% medium density)
+    if medium_density > 0.10 || total_issue_density > 0.15 {
         return HealthGrade::B;
     }
 
-    // A: Good - no high issues AND very low medium issues (< 5%)
+    // A: Well-balanced - no high issues AND low medium issues (<= 10%)
     // This is the top grade - no need to go higher
-    if high == 0 && medium_density <= 0.05 && internal_couplings >= 10 {
+    if high == 0 && medium_density <= 0.10 && internal_couplings >= 10 {
         return HealthGrade::A;
     }
 
