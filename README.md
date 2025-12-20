@@ -6,7 +6,7 @@
 
 **Measure the "right distance" in your Rust code.**
 
-`cargo-coupling` analyzes coupling in Rust projects based on Vlad Khononov's "Balancing Coupling in Software Design" framework. It measures coupling across multiple dimensions: **Integration Strength**, **Distance**, **Volatility**, **Connascence**, and **Temporal Coupling**.
+`cargo-coupling` analyzes coupling in Rust projects based on Vlad Khononov's "Balancing Coupling in Software Design" framework. It calculates a **Balance Score** from three core dimensions: **Integration Strength**, **Distance**, and **Volatility**. Additional insights are provided through Connascence and Temporal Coupling analysis.
 
 > ⚠️ **Experimental Project**
 >
@@ -156,42 +156,43 @@ cargo coupling --no-git ./src
 
 ## Features
 
-- **5-Dimensional Analysis**: Measures Integration Strength, Distance, Volatility, Connascence, and Temporal Coupling
-- **Balance Score**: Calculates overall coupling balance (0.0 - 1.0)
+- **3-Dimensional Balance Score**: Calculates coupling balance based on **Integration Strength**, **Distance**, and **Volatility** (0.0 - 1.0)
 - **Interactive Web UI**: `--web` flag starts a browser-based visualization with graph, hotspots, and blast radius analysis
 - **Job-Focused CLI**: Quick commands for common tasks (`--hotspots`, `--impact`, `--check`, `--json`)
 - **Beginner-Friendly**: `--verbose` flag explains issues in plain language with fix examples
 - **CI/CD Quality Gate**: `--check` command with configurable thresholds and exit codes
 - **AI-Friendly Output**: `--ai` flag generates output optimized for coding agents (Claude, Copilot, etc.)
-- **APOSD Metrics**: Detects shallow modules, pass-through methods, and high cognitive load (inspired by "A Philosophy of Software Design")
-- **Connascence Detection**: Identifies coupling types (Name, Type, Position, Algorithm)
-- **Temporal Coupling Detection**: Detects execution order dependencies and Rust-specific patterns
 - **Issue Detection**: Automatically identifies problematic coupling patterns
 - **Circular Dependency Detection**: Detects and reports dependency cycles
 - **Visibility Tracking**: Analyzes Rust visibility modifiers (pub, pub(crate), etc.)
-- **Git Integration**: Analyzes change frequency from Git history
+- **Git Integration**: Analyzes change frequency from Git history for volatility scoring
+- **Additional Insights** (informational): Connascence types, Temporal Coupling patterns, APOSD metrics
 - **Configuration File**: Supports `.coupling.toml` for volatility overrides
 - **Parallel Processing**: Uses Rayon for fast analysis of large codebases
 - **Configurable Thresholds**: Customize dependency limits via CLI or config
 - **Markdown Reports**: Generates detailed analysis reports
 - **Cargo Integration**: Works as a cargo subcommand
 
-## The Five Dimensions
+## Coupling Dimensions
 
-### 1. Integration Strength
+### Core Dimensions (Used in Balance Score & Issue Detection)
+
+The **Balance Score** and **Health Grade** are calculated from these three dimensions:
+
+#### 1. Integration Strength
 
 How much knowledge is shared between components. Detected through AST analysis:
 
-| Level | Description | Detection Method |
-|-------|-------------|------------------|
-| Contract | Trait bounds and implementations | `impl Trait for Type`, trait bounds |
-| Model | Type usage and imports | Type parameters, use statements |
-| Functional | Function/method calls | Method calls, function calls |
-| Intrusive | Direct field/internal access | Field access, struct construction |
+| Level | Description | Detection Method | Score |
+|-------|-------------|------------------|-------|
+| Contract | Trait bounds and implementations | `impl Trait for Type`, trait bounds | 0.25 |
+| Model | Type usage and imports | Type parameters, use statements | 0.50 |
+| Functional | Function/method calls | Method calls, function calls | 0.75 |
+| Intrusive | Direct field/internal access | Field access, struct construction | 1.00 |
 
-### 2. Distance
+#### 2. Distance
 
-How far apart components are in the module hierarchy.
+How far apart components are in the module hierarchy:
 
 | Level | Description | Score |
 |-------|-------------|-------|
@@ -200,9 +201,9 @@ How far apart components are in the module hierarchy.
 | Different Module | Across modules in same crate | 0.50 |
 | Different Crate | External crate dependency | 1.00 |
 
-### 3. Volatility
+#### 3. Volatility
 
-How frequently a component changes (from Git history).
+How frequently a component changes (from Git history):
 
 | Level | Changes (6 months) | Score |
 |-------|-------------------|-------|
@@ -210,7 +211,13 @@ How frequently a component changes (from Git history).
 | Medium | 3-10 changes | 0.50 |
 | High | 11+ changes | 1.00 |
 
-### 4. Connascence Types
+> **Note**: Volatility requires Git history. Use `cargo coupling ./src` (not `--no-git`) to enable volatility analysis.
+
+### Additional Insights (Informational Only)
+
+> **Note**: The following dimensions are detected and reported for additional insight, but do **not** affect the Balance Score or Health Grade. They provide supplementary information for understanding coupling patterns.
+
+#### 4. Connascence Types
 
 Based on Meilir Page-Jones' taxonomy, connascence measures how changes in one component require changes in another.
 
@@ -222,11 +229,11 @@ Based on Meilir Page-Jones' taxonomy, connascence measures how changes in one co
 | Position | 0.7 | Agreement on ordering | Use builder pattern or named parameters |
 | Algorithm | 0.9 (strong) | Agreement on algorithms | Extract to shared module |
 
-### 5. Temporal Coupling
+#### 5. Temporal Coupling
 
 Components that must be used in a specific order. Detected through heuristic pattern analysis.
 
-#### Paired Operations
+**Paired Operations:**
 
 | Operation | Description | Severity |
 |-----------|-------------|----------|
@@ -236,7 +243,7 @@ Components that must be used in a specific order. Detected through heuristic pat
 | init/cleanup | Lifecycle management | Medium |
 | subscribe/unsubscribe | Event handlers | Medium |
 
-#### Rust-Specific Patterns
+**Rust-Specific Patterns:**
 
 | Pattern | Detection | Status |
 |---------|-----------|--------|
@@ -245,7 +252,7 @@ Components that must be used in a specific order. Detected through heuristic pat
 | **Async spawn/join** | Orphaned tasks detection | Warning |
 | **Unsafe allocations** | Manual memory management | Critical |
 
-#### Lifecycle Phases
+**Lifecycle Phases:**
 
 The analyzer tracks lifecycle methods to detect initialization order dependencies:
 
