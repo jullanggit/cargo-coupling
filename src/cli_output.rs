@@ -45,6 +45,97 @@ pub struct HotspotIssue {
     pub description: String,
 }
 
+// ============================================================================
+// Beginner-friendly explanations
+// ============================================================================
+
+/// Get a beginner-friendly explanation for an issue type
+pub fn get_issue_explanation(issue_type: &str) -> IssueExplanation {
+    match issue_type {
+        "High Efferent Coupling" => IssueExplanation {
+            what_it_means: "This module depends on too many other modules",
+            why_its_bad: vec![
+                "Changes elsewhere may break this module",
+                "Testing requires many mocks/stubs",
+                "Hard to understand in isolation",
+            ],
+            how_to_fix: "Split into smaller modules with clear responsibilities",
+            example: Some("e.g., Split main.rs into cli.rs, config.rs, runner.rs"),
+        },
+        "High Afferent Coupling" => IssueExplanation {
+            what_it_means: "Too many other modules depend on this one",
+            why_its_bad: vec![
+                "Changes here may break many other modules",
+                "Fear of changing leads to technical debt",
+                "Wide blast radius for bugs",
+            ],
+            how_to_fix: "Define a stable interface (trait) to hide implementation details",
+            example: Some("e.g., pub struct -> pub trait + impl for abstraction"),
+        },
+        "Circular Dependency" | "CircularDependency" => IssueExplanation {
+            what_it_means: "Modules depend on each other in a cycle (A -> B -> A)",
+            why_its_bad: vec![
+                "Can't understand one without the other",
+                "Unit testing is difficult (need both)",
+                "May cause compilation order issues",
+            ],
+            how_to_fix: "Extract shared types to a common module, or use traits to invert dependencies",
+            example: Some("e.g., A -> B -> A becomes A -> Common <- B"),
+        },
+        "Global Complexity" => IssueExplanation {
+            what_it_means: "Strong coupling to a distant module",
+            why_its_bad: vec![
+                "Hard to trace code flow",
+                "Changes have unpredictable effects",
+                "Module is not self-contained",
+            ],
+            how_to_fix: "Move the dependency closer, or use an interface for loose coupling",
+            example: None,
+        },
+        "Cascading Change Risk" => IssueExplanation {
+            what_it_means: "Strongly coupled to a frequently-changing module",
+            why_its_bad: vec![
+                "Every change there requires changes here",
+                "Bugs propagate through the chain",
+                "Constant rework needed",
+            ],
+            how_to_fix: "Depend on a stable interface instead of implementation",
+            example: None,
+        },
+        "Inappropriate Intimacy" | "InappropriateIntimacy" => IssueExplanation {
+            what_it_means: "Directly accessing another module's internal details",
+            why_its_bad: vec![
+                "Breaks encapsulation",
+                "Internal changes affect external code",
+                "Unclear module boundaries",
+            ],
+            how_to_fix: "Access through public methods or traits instead",
+            example: Some("e.g., foo.internal_field -> foo.get_value()"),
+        },
+        _ => IssueExplanation {
+            what_it_means: "A coupling-related issue was detected",
+            why_its_bad: vec![
+                "May reduce code maintainability",
+                "May increase change impact",
+            ],
+            how_to_fix: "Review the module dependencies",
+            example: None,
+        },
+    }
+}
+
+/// Beginner-friendly explanation for an issue
+pub struct IssueExplanation {
+    /// What this issue means in simple terms
+    pub what_it_means: &'static str,
+    /// Why this is problematic
+    pub why_its_bad: Vec<&'static str>,
+    /// How to fix it
+    pub how_to_fix: &'static str,
+    /// Optional example
+    pub example: Option<&'static str>,
+}
+
 /// Calculate hotspots from project metrics
 pub fn calculate_hotspots(
     metrics: &ProjectMetrics,
@@ -171,6 +262,7 @@ pub fn generate_hotspots_output<W: Write>(
     metrics: &ProjectMetrics,
     thresholds: &IssueThresholds,
     limit: usize,
+    verbose: bool,
     writer: &mut W,
 ) -> io::Result<()> {
     let hotspots = calculate_hotspots(metrics, thresholds, limit);
@@ -205,7 +297,7 @@ pub fn generate_hotspots_output<W: Write>(
             writeln!(writer, "   📁 {}", path)?;
         }
 
-        // Issues
+        // Issues with optional verbose explanations
         for issue in &hotspot.issues {
             let icon = match issue.severity.as_str() {
                 "Critical" => "🔴",
@@ -218,10 +310,32 @@ pub fn generate_hotspots_output<W: Write>(
                 "   {} {}: {}",
                 icon, issue.severity, issue.issue_type
             )?;
+
+            // Show beginner-friendly explanation in verbose mode
+            if verbose {
+                let explanation = get_issue_explanation(&issue.issue_type);
+                writeln!(writer)?;
+                writeln!(writer, "   💡 What it means:")?;
+                writeln!(writer, "      {}", explanation.what_it_means)?;
+                writeln!(writer)?;
+                writeln!(writer, "   ⚠️  Why it's a problem:")?;
+                for reason in &explanation.why_its_bad {
+                    writeln!(writer, "      • {}", reason)?;
+                }
+                writeln!(writer)?;
+                writeln!(writer, "   🔧 How to fix:")?;
+                writeln!(writer, "      {}", explanation.how_to_fix)?;
+                if let Some(example) = explanation.example {
+                    writeln!(writer, "      {}", example)?;
+                }
+                writeln!(writer)?;
+            }
         }
 
-        // Suggestion
-        writeln!(writer, "   → Fix: {}", hotspot.suggestion)?;
+        // Suggestion (only if not verbose, since verbose already shows how_to_fix)
+        if !verbose {
+            writeln!(writer, "   → Fix: {}", hotspot.suggestion)?;
+        }
         writeln!(writer)?;
     }
 

@@ -132,20 +132,24 @@ function buildElements(data) {
         }
     }));
 
-    const edges = data.edges.map(edge => ({
-        data: {
-            id: `${edge.source}-${edge.target}`,
-            source: edge.source,
-            target: edge.target,
-            strength: getStrengthValue(edge.strength),
-            distance: edge.distance,
-            volatility: edge.volatility,
-            balance: edge.balance_score,
-            issue: edge.issue,
-            inCycle: edge.in_cycle,
-            location: edge.location
-        }
-    }));
+    const edges = data.edges.map((edge, idx) => {
+        const dims = edge.dimensions || {};
+        return {
+            data: {
+                id: edge.id || `e${idx}`,
+                source: edge.source,
+                target: edge.target,
+                strength: dims.strength?.value ?? 0.5,
+                strengthLabel: dims.strength?.label ?? 'Model',
+                distance: dims.distance?.label ?? 'DifferentModule',
+                volatility: dims.volatility?.label ?? 'Low',
+                balance: dims.balance?.value ?? 0.5,
+                issue: edge.issue,
+                inCycle: edge.in_cycle,
+                location: edge.location
+            }
+        };
+    });
 
     return [...nodes, ...edges];
 }
@@ -317,10 +321,10 @@ function setupFilters() {
         const cyclesOnly = document.getElementById('show-cycles-only')?.checked;
 
         cy.edges().forEach(edge => {
-            const strength = getStrengthName(edge.data('strength'));
-            const distance = edge.data('distance');
+            const strength = edge.data('strengthLabel') || 'Model';
+            const distance = edge.data('distance') || 'DifferentModule';
             const volatility = edge.data('volatility') || 'Low';
-            const balance = edge.data('balance') || 0.5;
+            const balance = edge.data('balance') ?? 0.5;
             const hasIssue = edge.data('issue');
             const inCycle = edge.data('inCycle');
 
@@ -355,11 +359,17 @@ function setupFilters() {
     document.getElementById('show-cycles-only')?.addEventListener('change', applyFilters);
 
     document.getElementById('reset-filters')?.addEventListener('click', () => {
+        // Reset all checkboxes
         document.querySelectorAll('#strength-filters input, #distance-filters input, #volatility-filters input').forEach(cb => cb.checked = true);
         document.getElementById('balance-min').value = 0;
         document.getElementById('balance-max').value = 100;
         document.getElementById('show-issues-only').checked = false;
         document.getElementById('show-cycles-only').checked = false;
+
+        // Clear all highlighting classes
+        cy.elements().removeClass('hidden highlighted dimmed dependency-source dependency-target search-match');
+
+        // Re-apply filters to show all edges
         applyFilters();
     });
 

@@ -333,7 +333,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
 
     // --hotspots: Show top refactoring targets
     if let Some(limit) = args.hotspots {
-        generate_hotspots_output(&metrics, &thresholds, limit, &mut writer)?;
+        generate_hotspots_output(&metrics, &thresholds, limit, args.verbose, &mut writer)?;
         return Ok(());
     }
 

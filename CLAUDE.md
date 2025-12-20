@@ -33,6 +33,9 @@ cargo run -- coupling --verbose --timing ./src
 cargo run -- coupling --hotspots ./src
 cargo run -- coupling --hotspots=10 ./src
 
+# Hotspots with beginner-friendly explanations
+cargo run -- coupling --hotspots --verbose ./src
+
 # Impact: Analyze change impact for a module
 cargo run -- coupling --impact analyzer ./src
 cargo run -- coupling --impact main ./src
