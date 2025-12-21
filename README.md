@@ -8,6 +8,8 @@
 
 `cargo-coupling` analyzes coupling in Rust projects based on Vlad Khononov's "Balancing Coupling in Software Design" framework. It calculates a **Balance Score** from three core dimensions: **Integration Strength**, **Distance**, and **Volatility**.
 
+![CLI Output](docs/images/cli-output.png)
+
 > ⚠️ **Experimental Project**
 >
 > This tool is currently experimental. The scoring algorithms, thresholds, and detected patterns are subject to change based on real-world feedback.
@@ -85,6 +87,8 @@ The AI will analyze patterns and suggest specific refactoring strategies.
 ### 4. Interactive Web Visualization (Experimental)
 
 > ⚠️ **Experimental Feature**: The Web UI is currently in an experimental state. The interface, features, and behavior may change significantly in future versions.
+
+![Web UI](docs/images/web-ui.png)
 
 ```bash
 # Start interactive web UI
