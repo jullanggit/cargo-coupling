@@ -26,8 +26,18 @@ Real-world validation on OSS projects (bat, fd, eza, ripgrep):
 - Different architectures show different patterns - tool is sensitive
 - Score variance (0.67-0.98) indicates meaningful differentiation
 
+## Docker Best Practices (2025)
+
+- **cargo-chef**: Separates dependency compilation from source, enables layer caching. 5-10x faster rebuilds.
+- **distroless/cc-debian12**: 58MB final image. Use `:nonroot` tag for non-root execution.
+- **Edition 2024 requires nightly**: `if let` chains and other features need nightly until Rust 1.85+ stabilizes them.
+- **ARG scope in multi-stage**: Must redeclare `ARG` after each `FROM` statement.
+- **BuildKit cache mounts**: `--mount=type=cache,target=/usr/local/cargo/registry,sharing=locked` persists across builds.
+- **Git in distroless**: Not available. Use `Dockerfile.full` (debian-slim) for volatility analysis.
+
 ## What Didn't Work
 
 - ~~Connascence types~~: Too granular, removed. Strength levels are sufficient.
 - ~~APOSD metrics~~: Overlap with existing analysis, removed for simplicity.
 - ~~Temporal coupling~~: Git-based detection was noisy, kept only volatility.
+- ~~cargo-chef nightly tag~~: `lukemathwalker/cargo-chef:latest-rust-nightly` doesn't exist. Install nightly manually.

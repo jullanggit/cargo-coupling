@@ -13,6 +13,16 @@ cargo run -- coupling ./src    # Analyze
 cargo run -- coupling --web ./src  # Web UI
 ```
 
+## Docker
+
+```bash
+docker build -t cargo-coupling .                    # Build
+docker run --rm -v $(pwd):/workspace cargo-coupling coupling /workspace/src
+docker compose up web                               # Web UI on :3000
+```
+
+**Note**: Edition 2024 requires nightly Rust. Dockerfile uses `rustup default nightly`.
+
 ## Key Files
 
 | Path | Purpose |
@@ -21,6 +31,8 @@ cargo run -- coupling --web ./src  # Web UI
 | `src/balance.rs` | Balance score calculation |
 | `src/web/` | Web visualization server |
 | `web-assets/` | Frontend (HTML/CSS/JS) |
+| `Dockerfile` | distroless build (58MB) |
+| `Dockerfile.full` | Git-enabled build |
 
 ## Configuration
 
