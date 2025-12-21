@@ -1,0 +1,24 @@
+# Build artifacts
+target/
+*.rs.bk
+
+# Git
+.git/
+.gitignore
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Documentation (not needed in image)
+*.md
+docs/
+PROPOSAL.md
+
+# CI/CD
+.github/
+
+# Claude
+.claude/

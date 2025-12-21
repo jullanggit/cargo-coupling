@@ -1,0 +1,37 @@
+services:
+  # Run coupling analysis
+  analyze:
+    build: .
+    volumes:
+      - .:/workspace:ro
+    command: ["coupling", "/workspace/src"]
+
+  # Run with summary output
+  summary:
+    build: .
+    volumes:
+      - .:/workspace:ro
+    command: ["coupling", "--summary", "/workspace/src"]
+
+  # Run Web UI
+  web:
+    build: .
+    ports:
+      - "3000:3000"
+    volumes:
+      - .:/workspace:ro
+    command: ["coupling", "--web", "--no-open", "/workspace/src"]
+
+  # Development environment with source mounted
+  dev:
+    build:
+      context: .
+      target: builder
+    volumes:
+      - .:/app
+      - cargo-cache:/usr/local/cargo/registry
+    working_dir: /app
+    command: ["cargo", "run", "--", "--help"]
+
+volumes:
+  cargo-cache:

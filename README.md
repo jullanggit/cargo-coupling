@@ -29,6 +29,12 @@
 cargo install cargo-coupling
 ```
 
+Or use Docker:
+
+```bash
+docker pull ghcr.io/nwiizo/cargo-coupling
+```
+
 ### 2. Analyze
 
 ```bash
@@ -657,6 +663,42 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 ```
+
+## Docker
+
+Run cargo-coupling without installing Rust:
+
+```bash
+# Basic analysis
+docker run --rm -v $(pwd):/workspace ghcr.io/nwiizo/cargo-coupling coupling /workspace/src
+
+# Summary mode
+docker run --rm -v $(pwd):/workspace ghcr.io/nwiizo/cargo-coupling coupling --summary /workspace/src
+
+# Web UI (access at http://localhost:3000)
+docker run --rm -p 3000:3000 -v $(pwd):/workspace ghcr.io/nwiizo/cargo-coupling coupling --web --no-open /workspace/src
+
+# Japanese output
+docker run --rm -v $(pwd):/workspace ghcr.io/nwiizo/cargo-coupling coupling --summary --jp /workspace/src
+```
+
+### Docker Compose
+
+```bash
+# Run analysis
+docker compose run --rm analyze
+
+# Start Web UI
+docker compose up web
+```
+
+### Available Tags
+
+| Tag | Description |
+|-----|-------------|
+| `latest` | Latest release |
+| `main` | Latest main branch build |
+| `vX.Y.Z` | Specific version |
 
 ## CI/CD Integration
 
